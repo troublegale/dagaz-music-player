@@ -14,4 +14,3 @@ class ProbeDownloadService: DownloadService(42,DEFAULT_FOREGROUND_NOTIFICATION_U
     override fun getForegroundNotification(downloads: MutableList<Download>,notMetRequirements: Int) =
         helper.buildProgressNotification(this,android.R.drawable.stat_sys_download,null,"Скачивание тестового WAV",downloads,notMetRequirements)
 }
-
