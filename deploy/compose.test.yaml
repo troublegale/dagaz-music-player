@@ -1,0 +1,16 @@
+name: dagaz-storage-validation
+services:
+  rustfs:
+    image: rustfs/rustfs@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${DAGAZ_TEST_S3_ACCESS_KEY:?Set test credentials}
+      RUSTFS_SECRET_KEY: ${DAGAZ_TEST_S3_SECRET_KEY:?Set test credentials}
+      RUSTFS_ADDRESS: "0.0.0.0:9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+    ports:
+      - "127.0.0.1:19000:9000"
+    volumes:
+      - data:/data
+volumes:
+  data:

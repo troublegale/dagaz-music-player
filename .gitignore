@@ -1,6 +1,7 @@
 /target/
 **/target/
 .superpowers/
+/.tools/
 .env
 .env.*
 !.env.example
