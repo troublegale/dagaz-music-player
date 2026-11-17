@@ -22,3 +22,5 @@ pub(crate) fn positive<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D:
         Ok(n)
     }
 }
+mod schema;
+pub use schema::openapi_document;

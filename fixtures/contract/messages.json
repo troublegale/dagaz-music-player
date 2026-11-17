@@ -1,0 +1,15 @@
+{
+  "PairRequest":{"pairing_code":"test-only","device_name":"Phone","platform":"android"},
+  "PairResponse":{"device_id":"00000000-0000-0000-0000-000000000001","token":"test-only-not-a-real-token"},
+  "Playlist":{"id":"00000000-0000-0000-0000-000000000001","revision":1,"name":"Metro","track_ids":["00000000-0000-0000-0000-000000000002","00000000-0000-0000-0000-000000000002"],"next_cursor":null,"total_count":2},
+  "MediaDescriptor":{"track_id":"00000000-0000-0000-0000-000000000002","revision":1,"requested_quality":"high","effective_quality":"original","byte_length":100,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","etag":"opaque","url":"https://music.example/api/v1/tracks/id/media?revision=1&quality=high"},
+  "UploadState":{"id":"00000000-0000-0000-0000-000000000001","offset":10,"total_bytes":100,"expires_at":"2026-11-18T12:00:00Z","status":"uploading"},
+  "Job":{"id":"00000000-0000-0000-0000-000000000001","kind":"import","status":"queued","result":null,"errors":[]},
+  "Change":{"sequence":1,"entity":"track","entity_id":"00000000-0000-0000-0000-000000000002","revision":2,"deleted":true,"payload":null},
+  "SyncPage":{"generation":"00000000-0000-0000-0000-000000000001","changes":[],"next_cursor":"0","has_more":false},
+  "MetadataEdit":{"expected_revision":1,"patch":{"album":null}},
+  "PlaybackCommand":{"operation_id":"00000000-0000-0000-0000-000000000001","expected_epoch":1,"action":"seek","payload":{"position_ms":2000}},
+  "QueueUpdate":{"queue":["00000000-0000-0000-0000-000000000002"],"play_order":[0],"queue_index":0,"position_ms":0,"repeat":"off","shuffle_seed":null},
+  "PlaybackReport":{"epoch":1,"sequence":1,"track_id":"00000000-0000-0000-0000-000000000002","queue_index":0,"position_ms":2000,"paused":false},
+  "PlaybackAck":{"operation_id":"00000000-0000-0000-0000-000000000001","epoch":1,"phase":"stopped","position_ms":2000,"error":null}
+}

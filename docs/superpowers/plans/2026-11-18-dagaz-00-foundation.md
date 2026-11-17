@@ -1,4 +1,4 @@
-﻿# Dagaz Foundation Implementation Plan
+# Dagaz Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -33,7 +33,7 @@
 
 **Interfaces:** Consumes общий контракт. Produces DTO `Track`, `MetadataPatch`, `Quality`, `Playlist`, `MediaDescriptor`, `UploadState`, `Job`, `Change`, `SyncPage`, `PlaybackState`, `PlaybackCommand`, `PlaybackReport`, `PlaybackAck`, `ApiError` и модели доступа из общего плана. Все типы сериализуются serde; SDK/сеть/БД в пакет не входят.
 
-- [ ] Добавить минимальный пакет `dagaz-protocol` и тест `wire_preserves_metadata_clear_and_duplicate_queue`, ещё без типов. Зафиксировать примеры всех DTO и ошибок в JSON; тестовые идентификаторы — корректные постоянные UUID.
+- [x] Добавить минимальный пакет `dagaz-protocol` и тест `wire_preserves_metadata_clear_and_duplicate_queue`, ещё без типов. Зафиксировать примеры всех DTO и ошибок в JSON; тестовые идентификаторы — корректные постоянные UUID.
 
 ```rust
 let patch: MetadataPatch = serde_json::from_str(r#"{"album":null}"#).unwrap();
@@ -43,10 +43,10 @@ assert_eq!(state.queue[0], state.queue[1]);
 assert_eq!(state.queue_index, 1);
 ```
 
-- [ ] Выполнить `cargo test -p dagaz-protocol --test wire`: ожидается ошибка отсутствующих типов/поведения, а не зависимость от внешнего сервера.
-- [ ] Описать DTO и OpenAPI, включая nullable-поля, значения enum, пути, ошибки и ключи повторов. Добавить тест round-trip всех примеров и отклонения отрицательной позиции/неизвестного качества на границе запроса. OpenAPI и примеры проверять одним тестом схемы; не поддерживать две несовпадающие версии вручную.
-- [ ] Выполнить тот же тест, `cargo fmt --all -- --check`, `cargo clippy -p dagaz-protocol --all-targets -- -D warnings`; ожидаются PASS и ноль предупреждений. В `docs/development.md` записать ОС, команды и фактические версии.
-- [ ] Контрольная точка: `git add Cargo.toml Cargo.lock rust-toolchain.toml .gitignore crates/protocol api fixtures/contract docs/development.md`; `git commit -m "feat: define shared player protocol"`, если запись Git разрешена.
+- [x] Выполнить `cargo test -p dagaz-protocol --test wire`: ожидается ошибка отсутствующих типов/поведения, а не зависимость от внешнего сервера.
+- [x] Описать DTO и OpenAPI, включая nullable-поля, значения enum, пути, ошибки и ключи повторов. Добавить тест round-trip всех примеров и отклонения отрицательной позиции/неизвестного качества на границе запроса. OpenAPI и примеры проверять одним тестом схемы; не поддерживать две несовпадающие версии вручную.
+- [x] Выполнить тот же тест, `cargo fmt --all -- --check`, `cargo clippy -p dagaz-protocol --all-targets -- -D warnings`; ожидаются PASS и ноль предупреждений. В `docs/development.md` записать ОС, команды и фактические версии.
+- [x] Контрольная точка: `git add Cargo.toml Cargo.lock rust-toolchain.toml .gitignore crates/protocol api fixtures/contract docs/development.md`; `git commit -m "feat: define shared player protocol"`, если запись Git разрешена.
 
 ## P2. GPUI и потоковое аудио Windows
 
@@ -153,3 +153,4 @@ assert!(peak_ffmpeg_processes <= 1);
 - [ ] Выполнить `cargo test --manifest-path experiments/transcode/Cargo.toml --test profiles`. На тестовом VPS отдельно измерить cold transcode и запись в RustFS; результаты всех трёх форматов сохранить в `docs/validation/transcode.md`, без выдуманных гарантий по тарифу VPS.
 - [ ] Записать выбранные версии FFmpeg, GPUI, звука, SDK и Android-зависимостей в отчётах; по результатам обновить проектирование только фактическими уточнениями, сохраняя требования.
 - [ ] Контрольная точка: `git add experiments/transcode docs/validation/transcode.md`; `git commit -m "test: validate audio quality profiles"`. Переход к серверу/клиентам допускается после успешных обязательных проверок.
+

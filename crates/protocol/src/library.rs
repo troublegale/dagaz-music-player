@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Quality {
     Original,
@@ -38,7 +38,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Patch<T> {
         })
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MetadataPatch {
     #[serde(default, skip_serializing_if = "Patch::is_missing")]
@@ -55,4 +55,16 @@ pub struct MetadataPatch {
     pub disc_number: Patch<u16>,
     #[serde(default, skip_serializing_if = "Patch::is_missing")]
     pub artwork_id: Patch<Uuid>,
+}
+
+impl<T: schemars::JsonSchema> schemars::JsonSchema for Patch<T> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("Patch_{}", T::schema_name()).into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Option<T>>::json_schema(generator)
+    }
+    fn inline_schema() -> bool {
+        true
+    }
 }

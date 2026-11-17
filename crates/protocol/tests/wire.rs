@@ -101,3 +101,16 @@ fn playback_commands_reject_negative_positions_and_epochs() {
         assert!(from_value::<PlaybackCommand>(json!({"operation_id":id,"expected_epoch":epoch,"action":"seek","payload":{"position_ms":position}})).is_err());
     }
 }
+
+#[test]
+fn rejects_negative_upload_size_and_nonpositive_report_epoch() {
+    use dagaz_protocol::{PlaybackReport, UploadCreate};
+    let id = "00000000-0000-0000-0000-000000000001";
+    assert!(
+        from_value::<UploadCreate>(
+            json!({"filename":"song.flac","total_bytes":-1,"sha256":"a".repeat(64)})
+        )
+        .is_err()
+    );
+    assert!(from_value::<PlaybackReport>(json!({"epoch":0,"sequence":1,"track_id":id,"queue_index":0,"position_ms":0,"paused":false})).is_err());
+}

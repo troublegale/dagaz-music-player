@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Repeat {
     Off,
@@ -9,33 +9,39 @@ pub enum Repeat {
     All,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(try_from = "PlaybackWire")]
 pub struct PlaybackState {
+    #[schemars(range(min = 1))]
     pub epoch: i64,
     pub owner_device_id: Option<Uuid>,
     pub track_id: Option<Uuid>,
     pub queue: Vec<Uuid>,
     pub play_order: Vec<usize>,
     pub queue_index: Option<usize>,
+    #[schemars(range(min = 0))]
     pub position_ms: i64,
     pub paused: bool,
     pub repeat: Repeat,
     pub shuffle_seed: Option<i64>,
+    #[schemars(range(min = 0))]
     pub last_report_sequence: i64,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct PlaybackWire {
+    #[schemars(range(min = 1))]
     epoch: i64,
     owner_device_id: Option<Uuid>,
     track_id: Option<Uuid>,
     queue: Vec<Uuid>,
     play_order: Vec<usize>,
     queue_index: Option<usize>,
+    #[schemars(range(min = 0))]
     position_ms: i64,
     paused: bool,
     repeat: Repeat,
     shuffle_seed: Option<i64>,
+    #[schemars(range(min = 0))]
     last_report_sequence: i64,
 }
 impl TryFrom<PlaybackWire> for PlaybackState {
