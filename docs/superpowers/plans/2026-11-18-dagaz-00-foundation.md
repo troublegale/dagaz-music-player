@@ -153,4 +153,3 @@ assert!(peak_ffmpeg_processes <= 1);
 - [ ] Выполнить `cargo test --manifest-path experiments/transcode/Cargo.toml --test profiles`. На тестовом VPS отдельно измерить cold transcode и запись в RustFS; результаты всех трёх форматов сохранить в `docs/validation/transcode.md`, без выдуманных гарантий по тарифу VPS.
 - [ ] Записать выбранные версии FFmpeg, GPUI, звука, SDK и Android-зависимостей в отчётах; по результатам обновить проектирование только фактическими уточнениями, сохраняя требования.
 - [ ] Контрольная точка: `git add experiments/transcode docs/validation/transcode.md`; `git commit -m "test: validate audio quality profiles"`. Переход к серверу/клиентам допускается после успешных обязательных проверок.
-

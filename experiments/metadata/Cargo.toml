@@ -1,0 +1,12 @@
+[package]
+name = "dagaz-metadata-probe"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+lofty = "0.25.5"
+
+[dev-dependencies]
+tempfile = "3"
