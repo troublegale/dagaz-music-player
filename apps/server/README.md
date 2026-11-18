@@ -1,7 +1,7 @@
 # Personal library server
 
-Current scope: health, device pairing/revocation, resumable uploads and durable
-imports. Media streaming and catalog browsing are later plan tasks.
+Current scope: health, device pairing/revocation, resumable uploads, durable
+imports and authenticated original-audio streaming. Catalog browsing is next.
 
 Required environment:
 
@@ -80,6 +80,34 @@ registry; concurrent writes to different uploads also serialize. Disk checks
 and 507 errors protect staging, but real disk-fault injection and orphan/expired
 file cleanup remain S8 work. The configurable reserve is a free-space guard,
 not a claim that all outstanding uploads fit at once.
+
+## Immutable media
+
+`GET` and `HEAD /api/v1/tracks/{id}/media?revision=1&quality=original` require
+authentication, an explicit positive revision and quality. Single byte ranges,
+suffix ranges and open-ended ranges are supported. Matching `If-Range` returns
+206; mismatch returns the full entity with 200. Invalid ranges return 416 with
+`Content-Range: bytes */LENGTH`. `If-Match` mismatch returns 412.
+
+ETag and `X-Content-SHA256` identify the entire stored file; response length and
+Content-Range describe the returned selection. HEAD checks S3 metadata without
+downloading the object. Content-Disposition encodes untrusted filenames safely.
+The response streams with backpressure and a 64 KiB reader buffer. At most 16
+outbound media bodies are held at once; permits and revision leases are released
+on completion, cancellation or upstream failure. This is a buffer bound, not a
+measurement of total process RAM.
+
+An old revision remains readable for 24 hours after `superseded_at`; expired or
+removed revisions return 410. In-flight bodies retain a lease for the future S8
+garbage collector. Object cleanup itself is not implemented yet. Until S6
+introduces representation jobs, high/low requests return 425 without a job ID;
+they never silently return a different quality. The shared descriptor helper is
+available for S6's download manifests.
+
+Tests cover a real import-to-media download with byte equality, revision changes,
+Range/If-Range/If-Match, HEAD, filename safety, and resource release. Held response
+bodies are tested directly through the real router and S3 to make cancellation
+and capacity checks deterministic rather than dependent on TCP buffer sizes.
 
 Run the isolated RustFS fixture first (see `experiments/storage/run.ps1`), then:
 

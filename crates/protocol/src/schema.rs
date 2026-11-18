@@ -228,6 +228,7 @@ pub fn openapi_document() -> Value {
                 json!({"name":"quality","in":"query","required":true,"schema":{"$ref":"#/components/schemas/Quality"}}),
                 json!({"name":"Range","in":"header","schema":{"type":"string"}}),
                 json!({"name":"If-Range","in":"header","schema":{"type":"string"}}),
+                json!({"name":"If-Match","in":"header","schema":{"type":"string"}}),
             ]);
         }
         let headers = json!({"ETag":{"schema":{"type":"string"}},"Content-Length":{"schema":{"type":"integer","minimum":0}},"Content-Range":{"schema":{"type":"string"}},"Accept-Ranges":{"schema":{"type":"string"}}});
@@ -237,6 +238,7 @@ pub fn openapi_document() -> Value {
             responses["206"] = full;
             for (status, description) in [
                 ("410", "Revision removed"),
+                ("412", "ETag precondition failed"),
                 ("416", "Invalid range"),
                 ("425", "Representation preparing; job_id in error"),
             ] {

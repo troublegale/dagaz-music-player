@@ -2657,6 +2657,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2737,6 +2744,16 @@
               }
             },
             "description": "Revision removed"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "ETag precondition failed"
           },
           "416": {
             "content": {
@@ -2811,6 +2828,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2868,6 +2892,9 @@
           },
           "410": {
             "description": "Revision removed"
+          },
+          "412": {
+            "description": "ETag precondition failed"
           },
           "416": {
             "description": "Invalid range"

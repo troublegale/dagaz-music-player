@@ -1,6 +1,8 @@
 mod auth;
 mod config;
 mod jobs;
+mod media;
+pub use media::descriptor as media_descriptor;
 mod uploads;
 pub use jobs::run_jobs;
 
@@ -23,6 +25,16 @@ pub struct AppState {
     pub config: Config,
     limits: auth::RateLimits,
     job_notify: tokio::sync::Notify,
+    media_slots: Arc<tokio::sync::Semaphore>,
+    active_reads: Arc<std::sync::Mutex<std::collections::HashMap<String, usize>>>,
+}
+impl AppState {
+    pub fn active_media_reads(&self) -> Result<usize, AppError> {
+        self.active_reads
+            .lock()
+            .map(|counts| counts.values().sum())
+            .map_err(|_| AppError::internal("Media read registry unavailable"))
+    }
 }
 
 #[derive(Debug)]
@@ -154,6 +166,8 @@ pub async fn open_state(
         config,
         limits: auth::RateLimits::default(),
         job_notify: tokio::sync::Notify::new(),
+        media_slots: Arc::new(tokio::sync::Semaphore::new(16)),
+        active_reads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     }))
 }
 
@@ -171,6 +185,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/uploads/{id}/complete", post(uploads::complete))
         .route("/jobs/{id}", get(jobs::get))
+        .route("/tracks/{id}/media", get(media::stream).head(media::stream))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::authorize,
