@@ -1047,6 +1047,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-graphics"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "064badf302c3194842cf2c5d61f56cc88e54a759313879cdf03abdd27d0c3b97"
+dependencies = [
+ "bitflags 2.13.2",
+ "core-foundation 0.10.1",
+ "core-graphics-types 0.2.0",
+ "foreign-types",
+ "libc",
+]
+
+[[package]]
 name = "core-graphics-helmer-fork"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,9 +1281,12 @@ name = "dagaz-windows-audio-probe"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+ "raw-window-handle",
  "rodio",
+ "souvlaki",
  "stream-download",
  "tokio",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -6343,6 +6359,21 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "souvlaki"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edf43785a0649d5247f4f2ce8b59bf243be2ed0c18da01753f149ae3aac4c6e7"
+dependencies = [
+ "base64 0.22.1",
+ "block",
+ "core-graphics 0.25.0",
+ "dispatch",
+ "objc",
+ "thiserror 2.0.21",
+ "windows 0.62.2",
 ]
 
 [[package]]

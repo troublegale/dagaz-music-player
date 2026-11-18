@@ -147,6 +147,32 @@ class OfflineProbeTest {
 
 @RunWith(AndroidJUnit4::class)
 @UnstableApi
+class QualityProbeTest {
+    @Test fun encodedProfilesPlayAndSeek() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        val controller = connect(context)
+        try {
+            for (name in listOf("high.mp3","low.mp3")) {
+                play(controller,"asset:///audio/profiles/$name",name)
+                assertTrue("unexpected duration for $name",main { kotlin.math.abs(controller.duration-30_000) <= 500 })
+                main { controller.seekTo(25_000) }
+                val observed = CountDownLatch(1)
+                Handler(Looper.getMainLooper()).postDelayed({ observed.countDown() },1500)
+                assertTrue(observed.await(5,TimeUnit.SECONDS))
+                assertNull(main { controller.playerError })
+                assertTrue("profile stopped after seek: $name",main { controller.isPlaying })
+                assertTrue("position did not advance: $name",main { controller.currentPosition >= 25_300 })
+            }
+        } finally {
+            main { controller.pause(); controller.release() }
+            scenario.close()
+        }
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+@UnstableApi
 class LockedScreenProbeTest {
     @Test fun cachedPlaybackContinuesWhileScreenIsOff() {
         val context = ApplicationProvider.getApplicationContext<Context>()

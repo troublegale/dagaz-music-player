@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('NetworkOffline', 'ScreenOff')]
+    [ValidateSet('NetworkOffline', 'ScreenOff', 'Qualities')]
     [string]$Phase = 'NetworkOffline',
     [string]$Adb = "$PSScriptRoot/../../.tools/android/platform-tools/adb.exe"
 )
@@ -28,6 +28,10 @@ if ($Phase -eq 'ScreenOff') {
 if ($LASTEXITCODE -ne 0) { throw 'Android build/lint failed' }
 Invoke-Adb install -r -t "$PSScriptRoot/app/build/outputs/apk/debug/app-debug.apk"
 Invoke-Adb install -r -t "$PSScriptRoot/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+if ($Phase -eq 'Qualities') {
+    Invoke-Probe 'QualityProbeTest'
+    return
+}
 # Start experiments/media-server/server.mjs separately before this phase.
 Invoke-Adb reverse tcp:18888 tcp:18888
 try {

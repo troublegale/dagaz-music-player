@@ -1,7 +1,7 @@
 # Windows audio probe
 
 Work in progress, Windows x64, Rust 1.100.0 MSVC, 2026-11-18.
-Versions: GPUI Kit 0.10.0, Rodio 0.23.0 (WAV/MP3/FLAC, playback only),
+Versions: GPUI Kit 0.10.0, Rodio 0.23.0 (WAV/MP3/FLAC, playback only), Souvlaki 0.9.3,
 stream-download 0.24.6, Reqwest 0.13.5. Exact resolution is in the probe lockfile.
 
 ## Reproduction
@@ -65,5 +65,15 @@ Audio loading/decoder preparation occurs on a worker thread. The GUI stays
 independent, but controls can queue behind preparation; cancellation and bounded
 control latency remain W2 work. This prototype is not a reusable product engine.
 
-Audible output, system media buttons, unsupported device formats, Windows 10
+Windows SMTC pause/play/stop roundtrip passed through the native session API,
+addressing only the session titled `Dagaz Windows probe`. UI playback and native
+state share the same Rodio player. `examples/media_control_check.rs` provides a
+repeatable check with the probe open and network tone playing. The current check
+also repeats pause/play to check idempotence; that extended variant still needs
+a fresh native run after the previous computer-use interruption.
+
+The shared 320/128 kbit/s 30-second profile fixtures also pass Rodio duration and
+decoder-seek checks. The Rust suite now has five tests.
+
+Audible output, physical keyboard/headset media buttons, unsupported device formats, Windows 10
 compatibility and optimized release performance remain unverified. P2 is partial.

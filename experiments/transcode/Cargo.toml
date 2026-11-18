@@ -1,0 +1,15 @@
+[package]
+name = "dagaz-transcode-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+dagaz-protocol = { path = "../../crates/protocol" }
+lofty = "=0.25.5"
+tempfile = "3"
+
+[dev-dependencies]
+dagaz-metadata-probe = { path = "../metadata" }

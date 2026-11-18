@@ -30,3 +30,10 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")
 }
+
+val copyQualityFixtures by tasks.registering(Copy::class) {
+    from("../../../fixtures/audio/profiles") { include("*.mp3") }
+    into(layout.buildDirectory.dir("generated/qualityAssets/audio/profiles"))
+}
+android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/qualityAssets"))
+tasks.named("preBuild") { dependsOn(copyQualityFixtures) }

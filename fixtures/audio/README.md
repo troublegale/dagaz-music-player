@@ -26,3 +26,10 @@ ffmpeg -f lavfi -i sine=frequency=440:sample_rate=44100:duration=0.25 -metadata 
 Обложки: PNG из FFmpeg lavfi color=c=blue:s=16x16 и 2048x2048, по одному кадру.
 Большая обложка имеет 4 мегапикселя, но хорошо сжимается; это проверка размера изображения,
 не лимита байтов HTTP-загрузки. Ошибочные файлы создаются непосредственно тестами во временном каталоге.
+
+`profiles/high.mp3` и `profiles/low.mp3`: собственный 30-секундный синус 440 Гц,
+44100 Гц, mono, amplitude 12000 из `experiments/media-server/server.mjs`.
+Исходный WAV скопирован во временный рабочий файл, помечен через metadata-probe
+с cover.png, затем преобразован transcode-probe в MP3 320/128 кбит/с.
+Используются для проверки длительности и перемотки в Rodio и Media3;
+Android получает эти файлы через Gradle copyQualityFixtures, без второй копии в Git.

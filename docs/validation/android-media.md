@@ -43,7 +43,7 @@ because the shell exit code alone does not report assertion failures reliably.
 
 ## Observed results
 
-All three instrumented cases passed individually:
+The following instrumented cases passed individually:
 
 1. `MediaProbeTest`: PCM WAV, VBR MP3 and FLAC assets play; throttled network WAV
    starts before all 2,646,044 bytes are cached; explicit download completes
@@ -63,6 +63,10 @@ An earlier two-second screen test sought to five seconds immediately after
 locking. The user heard a brief interruption then; after removing that seek,
 the interruption did not recur. This supports a test-induced seek as the cause,
 without claiming a general absence of audio glitches.
+
+4. `QualityProbeTest`: the shared 30-second 320/128 kbit/s MP3 fixtures both
+   play, report duration within 500ms, and keep advancing after a seek to 25
+   seconds without player errors. Run it using `run-device.ps1 -Phase Qualities`.
 
 `assembleDebug`, `assembleDebugAndroidTest`, and `lintDebug` passed. Lint retains
 warnings about pinned dependency updates, prototype icon/backup configuration,
