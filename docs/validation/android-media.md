@@ -80,6 +80,9 @@ It does not establish the product's disk budget, eviction, download snapshots,
 revision validation, ownership handoff, or recovery after a server revision change.
 Those belong to the planned client/server implementation.
 
+Reconnected Poco X8 Pro quality-profile rerun: build/lint passed and
+`QualityProbeTest.encodedProfilesPlayAndSeek` passed in 4.626 seconds.
+
 Long screen-off playback, Doze/OEM battery restrictions, headset media buttons,
 audio-focus loss, unplugging headphones, notification controls, minimum API 28,
 and ordinary OS process eviction have not been validated. Force-stop recovery

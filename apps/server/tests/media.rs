@@ -25,6 +25,7 @@ async fn revision(server: &TestServer, id: Uuid, number: i64, bytes: &[u8]) -> S
         filename: "..\\bad\r\nX-Injected: yes.mp3".into(),
         title: None,
         artist: None,
+        artist_id: None,
         album_id: None,
         album: None,
         album_artist: None,

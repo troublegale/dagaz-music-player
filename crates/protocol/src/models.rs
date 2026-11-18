@@ -37,6 +37,8 @@ pub struct Track {
     pub filename: String,
     pub title: Option<String>,
     pub artist: Option<String>,
+    #[serde(default)]
+    pub artist_id: Option<Uuid>,
     pub album_id: Option<Uuid>,
     pub album: Option<String>,
     pub album_artist: Option<String>,
@@ -257,6 +259,8 @@ pub struct Album {
     pub id: Uuid,
     pub name: String,
     pub album_artist: Option<String>,
+    #[serde(default)]
+    pub album_artist_id: Option<Uuid>,
     pub artwork_id: Option<Uuid>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

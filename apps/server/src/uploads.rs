@@ -1,3 +1,4 @@
+use crate::operations::{key, recall, remember};
 use crate::{AppError, AppState, auth::Identity};
 use axum::{
     Extension, Json,
@@ -10,7 +11,7 @@ use axum::{
 };
 use dagaz_protocol::{Job, UploadCreate, UploadState, UploadStatus};
 use sha2::{Digest, Sha256};
-use sqlx::{Sqlite, Transaction};
+
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
@@ -88,15 +89,6 @@ impl UploadRow {
 fn conflict(message: &'static str) -> AppError {
     AppError::new(StatusCode::CONFLICT, "conflict", message)
 }
-fn key(headers: &HeaderMap) -> Result<String, AppError> {
-    Ok(headers
-        .get("Idempotency-Key")
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| AppError::invalid("Idempotency-Key is required"))?
-        .parse::<Uuid>()
-        .map_err(|_| AppError::invalid("Idempotency-Key must be a UUID"))?
-        .to_string())
-}
 fn valid_hash(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -110,38 +102,6 @@ pub(crate) fn check_space(state: &AppState, needed: u64) -> Result<(), AppError>
             "Insufficient server storage",
         ));
     }
-    Ok(())
-}
-async fn recall(
-    tx: &mut Transaction<'_, Sqlite>,
-    device: Uuid,
-    route: &str,
-    key: &str,
-    fingerprint: &str,
-) -> Result<Option<String>, AppError> {
-    let stored: Option<(String, String)> = sqlx::query_as(
-        "SELECT fingerprint,result_id FROM idempotency WHERE device_id=? AND route=? AND key=?",
-    )
-    .bind(device.to_string())
-    .bind(route)
-    .bind(key)
-    .fetch_optional(&mut **tx)
-    .await?;
-    match stored {
-        Some((saved, id)) if saved == fingerprint => Ok(Some(id)),
-        Some(_) => Err(conflict("Idempotency key was used for a different request")),
-        None => Ok(None),
-    }
-}
-async fn remember(
-    tx: &mut Transaction<'_, Sqlite>,
-    device: Uuid,
-    route: &str,
-    key: &str,
-    fingerprint: &str,
-    id: &str,
-) -> Result<(), AppError> {
-    sqlx::query("INSERT INTO idempotency(device_id,route,key,fingerprint,result_id,created_at) VALUES(?,?,?,?,?,?)").bind(device.to_string()).bind(route).bind(key).bind(fingerprint).bind(id).bind(crate::unix_time()?).execute(&mut **tx).await?;
     Ok(())
 }
 pub(crate) async fn load(state: &AppState, id: &str) -> Result<UploadRow, AppError> {

@@ -18,6 +18,14 @@
               "null"
             ]
           },
+          "album_artist_id": {
+            "default": null,
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "artwork_id": {
             "format": "uuid",
             "type": [
@@ -1117,6 +1125,14 @@
               "null"
             ]
           },
+          "artist_id": {
+            "default": null,
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "artwork_id": {
             "format": "uuid",
             "type": [
@@ -1298,6 +1314,7 @@
           {
             "in": "query",
             "name": "q",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1305,6 +1322,7 @@
           {
             "in": "query",
             "name": "sort",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1312,7 +1330,16 @@
           {
             "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "artist_id",
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },
@@ -1366,6 +1393,7 @@
           {
             "in": "query",
             "name": "q",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1373,6 +1401,7 @@
           {
             "in": "query",
             "name": "sort",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1380,6 +1409,7 @@
           {
             "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1425,6 +1455,7 @@
           {
             "in": "query",
             "name": "q",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1432,6 +1463,7 @@
           {
             "in": "query",
             "name": "sort",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1439,6 +1471,7 @@
           {
             "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1598,21 +1631,8 @@
         "parameters": [
           {
             "in": "query",
-            "name": "q",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sort",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "cursor",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -1658,6 +1678,7 @@
           {
             "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1797,21 +1818,8 @@
           },
           {
             "in": "query",
-            "name": "q",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sort",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2074,6 +2082,7 @@
           {
             "in": "query",
             "name": "q",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2081,6 +2090,7 @@
           {
             "in": "query",
             "name": "sort",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2088,6 +2098,7 @@
           {
             "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2230,6 +2241,24 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -2371,21 +2400,8 @@
         "parameters": [
           {
             "in": "query",
-            "name": "q",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sort",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2431,6 +2447,7 @@
           {
             "in": "query",
             "name": "q",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2438,6 +2455,7 @@
           {
             "in": "query",
             "name": "sort",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -2445,7 +2463,16 @@
           {
             "in": "query",
             "name": "cursor",
+            "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "artist_id",
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },

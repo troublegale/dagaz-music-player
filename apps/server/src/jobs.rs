@@ -126,7 +126,7 @@ fn inspect(path: PathBuf, upload: UploadRow, id: Uuid) -> Result<Track, AppError
         _ => return Err(invalid_audio()),
     };
     let tag = audio.tag(TagType::Id3v2).or_else(|| audio.primary_tag());
-    Ok(Track {
+    let track = Track {
         id,
         revision: 1,
         filename: upload.filename,
@@ -136,6 +136,7 @@ fn inspect(path: PathBuf, upload: UploadRow, id: Uuid) -> Result<Track, AppError
         artist: tag
             .and_then(|tag| tag.artist())
             .map(|value| value.into_owned()),
+        artist_id: None,
         album_id: None,
         album: tag
             .and_then(|tag| tag.album())
@@ -159,7 +160,9 @@ fn inspect(path: PathBuf, upload: UploadRow, id: Uuid) -> Result<Track, AppError
         artwork_id: None,
         original_bytes: upload.total_bytes,
         ready_qualities: vec![Quality::Original],
-    })
+    };
+    crate::library::validate_track(&track)?;
+    Ok(track)
 }
 
 async fn publish_object(
@@ -350,7 +353,7 @@ async fn import(state: &AppState, job: &JobRow) -> Result<(), AppError> {
     let sha256 = upload.sha256.clone();
     let bytes = upload.total_bytes;
     let source_path = path.clone();
-    let track = tokio::task::spawn_blocking(move || inspect(source_path, upload, id))
+    let mut track = tokio::task::spawn_blocking(move || inspect(source_path, upload, id))
         .await
         .map_err(|_| AppError::internal("Audio inspection failed"))??;
     let duplicate:Option<String>=sqlx::query_scalar("SELECT r.track_id FROM media_revisions r JOIN tracks t ON t.id=r.track_id WHERE r.sha256=? AND t.deleted=0 LIMIT 1").bind(&sha256).fetch_optional(&state.db).await?;
@@ -360,16 +363,9 @@ async fn import(state: &AppState, job: &JobRow) -> Result<(), AppError> {
         let key = format!("tracks/{id}/1/original");
         let upload = crate::uploads::load(state, upload_id).await?;
         let storage_etag = publish_object(state, job, &upload, &path, &key).await?;
-        let payload = serde_json::to_string(&track)?;
         let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
-        sqlx::query("INSERT INTO tracks(id,revision,filename,data_json) VALUES(?,1,?,?)")
-            .bind(id.to_string())
-            .bind(&track.filename)
-            .bind(&payload)
-            .execute(&mut *tx)
-            .await?;
+        crate::library::write_track(&mut tx, &mut track).await?;
         sqlx::query("INSERT INTO media_revisions(track_id,revision,quality,object_key,byte_length,sha256,etag,storage_etag,created_at) VALUES(?,1,'original',?,?,?,?,?,?)").bind(id.to_string()).bind(&key).bind(bytes).bind(&sha256).bind(format!("\"{sha256}\"")).bind(storage_etag).bind(crate::unix_time()?).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO changes(entity,entity_id,revision,payload_json,created_at) VALUES('track',?,1,?,?)").bind(id.to_string()).bind(payload).bind(crate::unix_time()?).execute(&mut *tx).await?;
         finish(&mut tx, job, upload_id, &id.to_string()).await?;
         tx.commit().await?;
         let _ = tokio::fs::remove_file(&path).await;

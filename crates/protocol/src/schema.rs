@@ -181,6 +181,7 @@ pub fn openapi_document() -> Value {
                         | "/api/v1/albums"
                         | "/api/v1/artists"
                         | "/api/v1/playlists"
+                        | "/api/v1/playlists/{id}"
                         | "/api/v1/albums/{id}/tracks"
                         | "/api/v1/download-manifests/{id}"
                         | "/api/v1/snapshot"
@@ -192,7 +193,14 @@ pub fn openapi_document() -> Value {
                     .unwrap()
                     .entry("parameters")
                     .or_insert_with(|| json!([]));
-                let names: &[&str] = if path == "/api/v1/devices" {
+                let names: &[&str] = if matches!(
+                    path.as_str(),
+                    "/api/v1/devices"
+                        | "/api/v1/playlists/{id}"
+                        | "/api/v1/snapshot"
+                        | "/api/v1/changes"
+                        | "/api/v1/download-manifests/{id}"
+                ) {
                     &["cursor"]
                 } else {
                     &["q", "sort", "cursor"]
@@ -201,7 +209,10 @@ pub fn openapi_document() -> Value {
                     parameters
                         .as_array_mut()
                         .unwrap()
-                        .push(json!({"name":name,"in":"query","schema":{"type":"string"}}));
+                        .push(json!({"name":name,"in":"query","required":path=="/api/v1/changes"&&*name=="cursor","schema":{"type":"string"}}));
+                }
+                if matches!(path.as_str(), "/api/v1/tracks" | "/api/v1/albums") {
+                    parameters.as_array_mut().unwrap().push(json!({"name":"artist_id","in":"query","schema":{"type":"string","format":"uuid"}}));
                 }
                 parameters.as_array_mut().unwrap().push(json!({"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":500,"default":100}}));
             }

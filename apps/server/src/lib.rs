@@ -1,7 +1,11 @@
 mod auth;
 mod config;
 mod jobs;
+mod library;
 mod media;
+mod operations;
+mod playlists;
+mod sync;
 pub use media::descriptor as media_descriptor;
 mod uploads;
 pub use jobs::run_jobs;
@@ -160,6 +164,8 @@ pub async fn open_state(
             AppError::internal("S3 bucket check failed; check endpoint, bucket and credentials")
         })?;
     tokio::fs::create_dir_all(config.data_dir.join("staging")).await?;
+    sync::initialize(&db).await?;
+    library::backfill(&db).await?;
     Ok(Arc::new(AppState {
         db,
         s3,
@@ -185,6 +191,27 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/uploads/{id}/complete", post(uploads::complete))
         .route("/jobs/{id}", get(jobs::get))
+        .route("/tracks", get(library::tracks))
+        .route(
+            "/tracks/{id}",
+            get(library::track).delete(playlists::delete_track),
+        )
+        .route("/artists", get(library::artists))
+        .route("/albums", get(library::albums))
+        .route("/albums/{id}/tracks", get(library::album_tracks))
+        .route("/snapshot", get(sync::snapshot))
+        .route("/changes", get(sync::changes))
+        .route("/playlists", get(playlists::list).post(playlists::create))
+        .route(
+            "/playlists/{id}",
+            get(playlists::get)
+                .patch(playlists::rename)
+                .delete(playlists::delete),
+        )
+        .route(
+            "/playlists/{id}/tracks",
+            axum::routing::put(playlists::replace).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
         .route("/tracks/{id}/media", get(media::stream).head(media::stream))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),

@@ -109,12 +109,52 @@ Range/If-Range/If-Match, HEAD, filename safety, and resource release. Held respo
 bodies are tested directly through the real router and S3 to make cancellation
 and capacity checks deterministic rather than dependent on TCP buffer sizes.
 
+## Catalog and synchronization
+
+Authenticated catalog routes list tracks, artists, albums and playlists in pages
+of 1–500 items (default 100). Track search treats input as literal words with
+prefix matching, including Cyrillic; SQL/FTS expressions are not accepted as code.
+Track sorts are `title`, `artist`, `album`; album contents default to disc/track
+order. Named lists use `sort=name`. `artist_id` filters tracks by performer or
+album credit, and albums by album credit. Cursors belong to their query/filter.
+
+Albums are identified by normalized name and album artist (falling back to the
+performer). Tracks retain their original tag text and stable IDs. Import links
+credited names to artist IDs; this does not disambiguate real-world people.
+Each metadata text field is limited to 4 KiB. Existing imports are indexed in
+bounded batches on startup after the catalog migration.
+
+Playlist create/rename/replace/delete and track deletion require a UUID
+`Idempotency-Key`; edits/deletes also require `expected_revision`. Conflicts
+return 409. Repeated track IDs preserve separate ordered occurrences. Replacing
+contents accepts a JSON body up to 16 MiB. GET playlist pages are fenced by its
+revision: an old cursor returns 409 after an edit. Lists and sync payloads contain
+playlist summaries with a cursor to the first member page; they do not embed an
+unbounded track list. Deleting a playlist leaves tracks intact; deleting a track
+removes all its playlist occurrences, advances those playlist revisions and emits
+tombstones. Unreferenced album/artist catalog entries are also tombstoned. Physical
+audio cleanup remains S8 work.
+
+Start synchronization with `/api/v1/snapshot`. Keep its `generation` and
+`high_watermark` while following `next_cursor`, then request
+`/api/v1/changes?cursor=GENERATION:HIGH_WATERMARK`. Follow each delta's
+`next_cursor`. Apply an entity only when its `sequence` is newer than the locally
+stored sequence, retaining deletion sequences too. Snapshot pages may contain
+concurrent updates newer than their starting watermark; this rule prevents older
+deltas from overwriting them. Changes are committed with the catalog transaction.
+Invalidated generations or sequences below the retained floor return 410
+`cursor_expired`, requiring a new snapshot. The journal currently retains all
+changes; pruning with at least 30 days of retention and restore-generation rotation
+will be implemented in S8. WebSocket notifications/presence are grouped with S7;
+clients can poll HTTP changes in the meantime.
+
 Run the isolated RustFS fixture first (see `experiments/storage/run.ps1`), then:
 
 ```text
 cargo test -p dagaz-server
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cargo test -p dagaz-server --test library catalog_pages_one_hundred_thousand_tracks -- --ignored --nocapture
 ```
 
 Tests use a real loopback HTTP listener, separate SQLite files and a unique empty

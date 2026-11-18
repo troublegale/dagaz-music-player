@@ -1,6 +1,17 @@
 use dagaz_protocol::{MetadataPatch, PlaybackState, Quality};
 use serde_json::{from_value, json, to_value};
 
+#[test]
+fn track_keeps_artist_identity_for_catalog_links() {
+    let mut value: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../fixtures/contract/track-null-tags.json"
+    ))
+    .unwrap();
+    value["artist_id"] = json!("00000000-0000-0000-0000-000000000003");
+    let track: dagaz_protocol::Track = from_value(value.clone()).unwrap();
+    assert_eq!(to_value(track).unwrap(), value);
+}
+
 fn state() -> serde_json::Value {
     serde_json::from_str(include_str!(
         "../../../fixtures/contract/playback-duplicates.json"
@@ -113,4 +124,33 @@ fn rejects_negative_upload_size_and_nonpositive_report_epoch() {
         .is_err()
     );
     assert!(from_value::<PlaybackReport>(json!({"epoch":0,"sequence":1,"track_id":id,"queue_index":0,"position_ms":0,"paused":false})).is_err());
+}
+#[test]
+fn catalog_contract_has_artist_filter_and_playlist_pagination() {
+    let document = dagaz_protocol::openapi_document();
+    for path in ["/api/v1/tracks", "/api/v1/albums"] {
+        assert!(
+            document["paths"][path]["get"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value["name"] == "artist_id" && value["schema"]["format"] == "uuid")
+        );
+    }
+    for name in ["limit", "cursor"] {
+        assert!(
+            document["paths"]["/api/v1/playlists/{id}"]["get"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value["name"] == name)
+        );
+    }
+    assert!(
+        document["paths"]["/api/v1/changes"]["get"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value["name"] == "cursor" && value["required"] == true)
+    );
 }

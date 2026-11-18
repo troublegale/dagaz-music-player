@@ -814,6 +814,7 @@ version = "0.1.0"
 dependencies = [
  "aws-sdk-s3",
  "axum",
+ "base64 0.22.1",
  "dagaz-protocol",
  "fs2",
  "futures-util",
@@ -830,6 +831,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower",
+ "unicode-normalization",
  "uuid",
 ]
 
@@ -2556,6 +2558,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls 0.26.6",
