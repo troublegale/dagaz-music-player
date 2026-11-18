@@ -84,7 +84,7 @@ pub(crate) async fn pair(
     State(state): State<Arc<AppState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     body: Result<Json<PairRequest>, JsonRejection>,
-) -> Result<Json<PairResponse>, AppError> {
+) -> Result<(StatusCode, Json<PairResponse>), AppError> {
     state
         .limits
         .check(LimitKey::Pair(peer.ip()), 10, Instant::now())?;
@@ -121,10 +121,13 @@ pub(crate) async fn pair(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(PairResponse {
-        device_id: id,
-        token,
-    }))
+    Ok((
+        StatusCode::CREATED,
+        Json(PairResponse {
+            device_id: id,
+            token,
+        }),
+    ))
 }
 
 #[derive(Clone, Copy)]

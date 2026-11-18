@@ -83,7 +83,7 @@ impl TestServer {
             .send()
             .await
             .unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), 201);
         server.token = response.json::<PairResponse>().await.unwrap().token;
         server
     }

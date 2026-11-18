@@ -219,7 +219,7 @@ async fn validates_inputs_and_reports_unavailable_storage_without_secrets() {
             .await
             .unwrap()
             .status(),
-        200,
+        201,
         "invalid input must not consume pairing code"
     );
     let response = server
