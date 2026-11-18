@@ -1,5 +1,5 @@
 use dagaz_protocol::{PairRequest, PairResponse, Platform};
-use dagaz_server::{Config, build_app, create_s3, open_database};
+use dagaz_server::{Config, create_s3, open_database, open_state, router, run_jobs};
 use sqlx::SqlitePool;
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::{sync::oneshot, task::JoinHandle};
@@ -13,6 +13,8 @@ pub struct TestServer {
     pub s3: aws_sdk_s3::Client,
     task: Option<JoinHandle<()>>,
     stop: Option<oneshot::Sender<()>>,
+    worker: Option<JoinHandle<Result<(), dagaz_server::AppError>>>,
+    worker_stop: Option<tokio::sync::watch::Sender<bool>>,
     _directory: tempfile::TempDir,
 }
 
@@ -48,6 +50,8 @@ impl TestServer {
             s3_bucket: format!("dagaz-auth-{}", uuid::Uuid::new_v4()),
             s3_access_key: value("DAGAZ_TEST_S3_ACCESS_KEY"),
             s3_secret_key: value("DAGAZ_TEST_S3_SECRET_KEY"),
+            max_upload_bytes: 8 * 1024 * 1024 * 1024,
+            min_free_bytes: 128 * 1024 * 1024,
         };
         let s3 = create_s3(&config).unwrap();
         s3.create_bucket()
@@ -68,6 +72,8 @@ impl TestServer {
             s3,
             task: None,
             stop: None,
+            worker: None,
+            worker_stop: None,
             _directory: directory,
         };
         server.start_http().await;
@@ -88,9 +94,13 @@ impl TestServer {
         server
     }
     async fn start_http(&mut self) {
-        let app = build_app(self.config.clone(), self.db.clone(), self.s3.clone())
+        let state = open_state(self.config.clone(), self.db.clone(), self.s3.clone())
             .await
             .unwrap();
+        let app = router(state.clone());
+        let (worker_stop, worker_shutdown) = tokio::sync::watch::channel(false);
+        self.worker_stop = Some(worker_stop);
+        self.worker = Some(tokio::spawn(run_jobs(state, worker_shutdown)));
         let listener = tokio::net::TcpListener::bind(self.config.listen)
             .await
             .unwrap();
@@ -119,6 +129,19 @@ impl TestServer {
                 .unwrap()
                 .unwrap();
         }
+        self.pause_jobs().await;
+    }
+    pub async fn pause_jobs(&mut self) {
+        if let Some(stop) = self.worker_stop.take() {
+            let _ = stop.send(true);
+        }
+        if let Some(worker) = self.worker.take() {
+            tokio::time::timeout(std::time::Duration::from_secs(30), worker)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+        }
     }
     pub async fn restart(&mut self) {
         self.stop_http().await;
@@ -129,6 +152,27 @@ impl TestServer {
     pub async fn finish(mut self) {
         self.stop_http().await;
         self.db.close().await;
+        loop {
+            let objects = self
+                .s3
+                .list_objects_v2()
+                .bucket(&self.config.s3_bucket)
+                .send()
+                .await
+                .unwrap();
+            if objects.contents().is_empty() {
+                break;
+            }
+            for object in objects.contents() {
+                self.s3
+                    .delete_object()
+                    .bucket(&self.config.s3_bucket)
+                    .key(object.key().unwrap())
+                    .send()
+                    .await
+                    .unwrap();
+            }
+        }
         self.s3
             .delete_bucket()
             .bucket(&self.config.s3_bucket)
@@ -141,6 +185,9 @@ impl Drop for TestServer {
     fn drop(&mut self) {
         if let Some(task) = self.task.take() {
             task.abort();
+        }
+        if let Some(worker) = self.worker.take() {
+            worker.abort();
         }
     }
 }

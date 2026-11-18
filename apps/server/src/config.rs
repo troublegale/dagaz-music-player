@@ -17,6 +17,8 @@ pub struct Config {
     pub s3_bucket: String,
     pub s3_access_key: String,
     pub s3_secret_key: String,
+    pub max_upload_bytes: u64,
+    pub min_free_bytes: u64,
 }
 impl Config {
     pub fn from_env() -> Result<Self, AppError> {
@@ -36,11 +38,22 @@ impl Config {
             s3_bucket: required("DAGAZ_S3_BUCKET")?,
             s3_access_key: required("DAGAZ_S3_ACCESS_KEY")?,
             s3_secret_key: required("DAGAZ_S3_SECRET_KEY")?,
+            max_upload_bytes: std::env::var("DAGAZ_MAX_UPLOAD_BYTES")
+                .unwrap_or_else(|_| "8589934592".into())
+                .parse()
+                .map_err(|_| AppError::invalid("Invalid DAGAZ_MAX_UPLOAD_BYTES"))?,
+            min_free_bytes: std::env::var("DAGAZ_MIN_FREE_BYTES")
+                .unwrap_or_else(|_| "134217728".into())
+                .parse()
+                .map_err(|_| AppError::invalid("Invalid DAGAZ_MIN_FREE_BYTES"))?,
         };
         config.validate()?;
         Ok(config)
     }
     pub(crate) fn validate(&self) -> Result<(), AppError> {
+        if self.max_upload_bytes == 0 || self.max_upload_bytes > i64::MAX as u64 {
+            return Err(AppError::invalid("Invalid maximum upload size"));
+        }
         let endpoint: axum::http::Uri = self
             .s3_endpoint
             .parse()

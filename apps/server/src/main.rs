@@ -1,4 +1,6 @@
-use dagaz_server::{Config, build_app, create_s3, new_pairing_code, open_database};
+use dagaz_server::{
+    Config, create_s3, new_pairing_code, open_database, open_state, router, run_jobs,
+};
 use std::net::SocketAddr;
 
 #[tokio::main]
@@ -16,15 +18,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let s3 = create_s3(&config)?;
     let listen = config.listen;
-    let app = build_app(config, db.clone(), s3).await?;
+    let state = open_state(config, db.clone(), s3).await?;
+    let app = router(state.clone());
     let listener = tokio::net::TcpListener::bind(listen).await?;
     eprintln!("Dagaz listening on {}", listener.local_addr()?);
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    let (stop_send, mut stop) = tokio::sync::watch::channel(false);
+    let mut worker = tokio::spawn(run_jobs(state, stop.clone()));
+    let http_stop = stop_send.clone();
+    let mut server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            tokio::select! {_=shutdown_signal()=>{let _=http_stop.send(true);},_=stop.changed()=>{}}
+        })
+        .await
+    });
+    tokio::select! {
+        result=&mut server=>{let _=stop_send.send(true);result??;worker.await??;},
+        result=&mut worker=>{let _=stop_send.send(true);server.await??;result??;},
+    }
     db.close().await;
     Ok(())
 }

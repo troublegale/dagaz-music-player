@@ -1,5 +1,8 @@
 mod auth;
 mod config;
+mod jobs;
+mod uploads;
+pub use jobs::run_jobs;
 
 pub use auth::new_pairing_code;
 use axum::{
@@ -19,6 +22,7 @@ pub struct AppState {
     pub s3: aws_sdk_s3::Client,
     pub config: Config,
     limits: auth::RateLimits,
+    job_notify: tokio::sync::Notify,
 }
 
 #[derive(Debug)]
@@ -64,8 +68,36 @@ impl std::fmt::Display for AppError {
 impl std::error::Error for AppError {}
 impl From<sqlx::Error> for AppError {
     fn from(_: sqlx::Error) -> Self {
-        Self::internal("Database operation failed")
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "database_error",
+            "Database operation failed",
+        )
     }
+}
+impl From<std::io::Error> for AppError {
+    fn from(error: std::io::Error) -> Self {
+        if error.kind() == std::io::ErrorKind::StorageFull {
+            Self::new(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "storage_full",
+                "Insufficient server storage",
+            )
+        } else {
+            Self::internal("Server filesystem operation failed")
+        }
+    }
+}
+impl From<serde_json::Error> for AppError {
+    fn from(_: serde_json::Error) -> Self {
+        Self::internal("Stored data serialization failed")
+    }
+}
+fn unix_time() -> Result<i64, AppError> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| AppError::internal("System clock must be after Unix epoch"))?
+        .as_secs() as i64)
 }
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -99,6 +131,14 @@ pub async fn build_app(
     db: SqlitePool,
     s3: aws_sdk_s3::Client,
 ) -> Result<Router, AppError> {
+    Ok(router(open_state(config, db, s3).await?))
+}
+
+pub async fn open_state(
+    config: Config,
+    db: SqlitePool,
+    s3: aws_sdk_s3::Client,
+) -> Result<Arc<AppState>, AppError> {
     config.validate()?;
     s3.head_bucket()
         .bucket(&config.s3_bucket)
@@ -107,20 +147,35 @@ pub async fn build_app(
         .map_err(|_| {
             AppError::internal("S3 bucket check failed; check endpoint, bucket and credentials")
         })?;
-    let state = Arc::new(AppState {
+    tokio::fs::create_dir_all(config.data_dir.join("staging")).await?;
+    Ok(Arc::new(AppState {
         db,
         s3,
         config,
         limits: auth::RateLimits::default(),
-    });
+        job_notify: tokio::sync::Notify::new(),
+    }))
+}
+
+pub fn router(state: Arc<AppState>) -> Router {
     let protected = Router::new()
         .route("/devices", get(auth::devices))
         .route("/devices/{id}", delete(auth::revoke))
+        .route("/uploads", post(uploads::create))
+        .route(
+            "/uploads/{id}",
+            get(uploads::get)
+                .patch(uploads::patch)
+                .layer(DefaultBodyLimit::max(uploads::MAX_CHUNK_BYTES))
+                .route_layer(axum::middleware::from_fn(uploads::check_chunk_length)),
+        )
+        .route("/uploads/{id}/complete", post(uploads::complete))
+        .route("/jobs/{id}", get(jobs::get))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::authorize,
         ));
-    Ok(Router::new()
+    Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .nest(
             "/api/v1",
@@ -139,5 +194,5 @@ pub async fn build_app(
             )
         })
         .layer(DefaultBodyLimit::max(16 * 1024))
-        .with_state(state))
+        .with_state(state)
 }
