@@ -176,7 +176,8 @@ pub fn openapi_document() -> Value {
             if method == "get"
                 && matches!(
                     path.as_str(),
-                    "/api/v1/tracks"
+                    "/api/v1/devices"
+                        | "/api/v1/tracks"
                         | "/api/v1/albums"
                         | "/api/v1/artists"
                         | "/api/v1/playlists"
@@ -191,7 +192,12 @@ pub fn openapi_document() -> Value {
                     .unwrap()
                     .entry("parameters")
                     .or_insert_with(|| json!([]));
-                for name in ["q", "sort", "cursor"] {
+                let names: &[&str] = if path == "/api/v1/devices" {
+                    &["cursor"]
+                } else {
+                    &["q", "sort", "cursor"]
+                };
+                for name in names {
                     parameters
                         .as_array_mut()
                         .unwrap()

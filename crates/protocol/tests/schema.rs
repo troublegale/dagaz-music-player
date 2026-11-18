@@ -108,3 +108,16 @@ fn checked_in_contract_is_current_and_all_schema_references_resolve() {
         jsonschema::validator_for(&doc).unwrap_or_else(|error| panic!("invalid {name}: {error}"));
     }
 }
+
+#[test]
+fn device_listing_declares_cursor_and_limit() {
+    let document = openapi_document();
+    let parameters = document["paths"]["/api/v1/devices"]["get"]["parameters"]
+        .as_array()
+        .expect("device pagination parameters");
+    let names: Vec<_> = parameters
+        .iter()
+        .map(|parameter| parameter["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["cursor", "limit"]);
+}
