@@ -1,4 +1,4 @@
-param([ValidateSet('Pairing','RealServer','Playback')][string]$Phase='Pairing')
+param([ValidateSet('Pairing','RealServer','Playback','ScreenLock','Headset')][string]$Phase='Pairing')
 $ErrorActionPreference='Stop'
 $repoRoot=(Resolve-Path -LiteralPath "$PSScriptRoot/../..").Path
 $adb=(Resolve-Path -LiteralPath "$repoRoot/.tools/android/platform-tools/adb.exe").Path
@@ -26,7 +26,12 @@ if($Phase -eq 'Pairing') {
     return
 }
 if($Phase -eq 'Playback') {
-    Invoke-Tests 'io.dagaz.player.PlaybackServiceTest' 4
+    Invoke-Tests 'io.dagaz.player.PlaybackServiceTest' 8
+    return
+}
+if($Phase -in @('ScreenLock','Headset')) {
+    $manual=if($Phase -eq 'ScreenLock'){'lock'}else{'headset'}
+    Invoke-Tests 'io.dagaz.player.PlaybackServiceTest#libraryAndBackgroundPlayback' 1 @{manual=$manual}
     return
 }
 $env:DAGAZ_ANDROID_FIXTURE_DIR=$fixture

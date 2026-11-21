@@ -51,7 +51,7 @@ system font/locale variants, power loss during an atomic write or signing and
 distribution. The library and product playback service are A2 work. Earlier media
 probe tests do not establish production-client playback, offline or handoff readiness.
 
-## A2 playback checkpoint (in progress)
+## A2 playback checkpoint
 
 2026-11-21, same Poco/API 36, production MediaSessionService with ExoPlayer.
 Three device tests pass together in 146.772 s: generated 30-second WAV and shared
@@ -77,8 +77,27 @@ visible result through the dedicated Search tab. The Library tab has no search
 field. No tests in these runs were skipped. The device runner now rejects skipped
 or assumption-failed tests instead of treating their JUnit summary as success.
 
-Still pending: physical screen lock/headset/audio-focus checks, network loss during
-an established stream, next-track prefetch evidence and long/Doze playback.
+The final extended device suite passes 8/8 in 38.697 s, without skipped tests:
+the prior checks plus transient audio-focus loss/gain with user-pause preservation,
+interruption halfway through an HTTP response and recovery using a nonzero Range,
+a distinct next-track request before the current track ends, and paused prepare at
+1000 ms. The latter exposed a real bug: separate setMediaItem/seek commands lost
+the requested position during session item resolution. Passing the initial
+position with setMediaItem fixes it; the same test now passes.
+
+Physical checks also pass on the production service: Bluetooth disconnect 1/1
+in 10.702 s (device disappears, playback pauses, user hears no speaker fallback),
+screen lock 1/1 in 19.754 s (15 seconds with screen off, position advances, one
+player, user hears no stutter). No power key or headset event was injected.
+An earlier extended run failed MP3 Activity recreation after the phone entered
+Doze. Automatic tests now hold a bounded screen wake lock, excluding the explicit
+lock test; they never wake or unlock the phone. Returning an already interactive
+Activity to the foreground before cleanup avoids this Poco's delayed destruction
+of stopped Activities. Final debug/JVM/lint and unsigned release/lint pass.
+
+Still pending for release: long/Doze playback, extended real mobile-network
+outages and other devices/API levels. This short screen-off check is not a Doze
+soak test.
 Playlists, explicit downloads, catalog persistence and device handoff are not
 validated or complete in this checkpoint. High/low remain HTTP 425 until S6;
 the app offers an explicit original-quality choice rather than falling back.

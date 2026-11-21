@@ -41,7 +41,7 @@ class PlayerConnection(private val context:Context) {
     private suspend fun ready():MediaController = controller?:suspendCancellableCoroutine { continuation ->
         future.addListener({if(continuation.isActive)try{continuation.resume(future.get())}catch(error:Exception){continuation.resumeWithException(error)}},context.mainExecutor)
     }
-    suspend fun prepare(media:MediaDescriptor,positionMs:Long)=withContext(Dispatchers.Main.immediate){val player=ready();player.pause();player.setMediaItem(playbackItem(media));player.seekTo(positionMs);player.prepare()}
+    suspend fun prepare(media:MediaDescriptor,positionMs:Long)=withContext(Dispatchers.Main.immediate){val player=ready();player.pause();player.setMediaItem(playbackItem(media),positionMs);player.prepare()}
     suspend fun setQueue(items:List<MediaItem>,index:Int)=withContext(Dispatchers.Main.immediate){val player=ready();player.setMediaItems(items,index,0);player.prepare();player.play()}
     fun toggle(){controller?.let{if(it.playWhenReady)it.pause()else{if(it.playerError!=null)it.prepare();it.play()}}}
     fun pause(){controller?.pause()}
