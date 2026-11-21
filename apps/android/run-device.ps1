@@ -1,0 +1,57 @@
+param([ValidateSet('Pairing','RealServer')][string]$Phase='Pairing')
+$ErrorActionPreference='Stop'
+$repoRoot=(Resolve-Path -LiteralPath "$PSScriptRoot/../..").Path
+$adb=(Resolve-Path -LiteralPath "$repoRoot/.tools/android/platform-tools/adb.exe").Path
+$fixture=(Resolve-Path -LiteralPath "$repoRoot/.superpowers/sdd/2026-11-18-dagaz-music-player-plan").Path
+function Invoke-Adb {
+    & $adb @args
+    if($LASTEXITCODE -ne 0){throw 'ADB command failed'}
+}
+function Invoke-Tests([string]$Classes,[int]$Count,[hashtable]$Extra=@{}) {
+    $instrumentArgs=@('shell','am','instrument','-w','-r','-e','class',$Classes)
+    foreach($entry in $Extra.GetEnumerator()){$instrumentArgs+=@('-e',$entry.Key,$entry.Value)}
+    $instrumentArgs+='io.dagaz.player.test/androidx.test.runner.AndroidJUnitRunner'
+    $result=Invoke-Adb @instrumentArgs
+    $result | Out-Host
+    if(($result -join "`n") -notmatch "OK \($Count tests?\)"){throw 'Android instrumentation did not pass'}
+}
+& "$PSScriptRoot/gradlew.bat" -p $PSScriptRoot testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
+if($LASTEXITCODE -ne 0){throw 'Android build/tests/lint failed'}
+# Push-install succeeds on this Poco where ADB's streaming installer is rejected without a prompt.
+Invoke-Adb install --no-streaming -r -t "$PSScriptRoot/app/build/outputs/apk/debug/app-debug.apk"
+Invoke-Adb install --no-streaming -r -t "$PSScriptRoot/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+if($Phase -eq 'Pairing') {
+    Invoke-Tests 'io.dagaz.player.PairingTest,io.dagaz.player.ConnectionScreenTest' 2
+    return
+}
+$env:DAGAZ_ANDROID_FIXTURE_DIR=$fixture
+$ready=Join-Path $fixture 'android-fixture.json'
+$finished=Join-Path $fixture 'android-fixture.finished'
+foreach($file in @($ready,$finished)){if(Test-Path -LiteralPath $file){Remove-Item -LiteralPath $file}}
+$cargoCommand=Get-Command cargo.exe -ErrorAction SilentlyContinue
+$cargo=if($cargoCommand){$cargoCommand.Source}else{Join-Path $env:USERPROFILE '.cargo/bin/cargo.exe'}
+if(!(Test-Path -LiteralPath $cargo)){throw 'Rust Cargo is required for the real-server fixture'}
+& $cargo test -p dagaz-server --test android_pairing --no-run
+if($LASTEXITCODE -ne 0){throw 'Rust Android fixture build failed'}
+$process=Start-Process -FilePath $cargo -ArgumentList @('test','-p','dagaz-server','--test','android_pairing','--','--ignored','--nocapture') -WorkingDirectory $repoRoot -WindowStyle Hidden -RedirectStandardOutput "$fixture/a1-server-fixture.log" -RedirectStandardError "$fixture/a1-server-fixture-build.log" -PassThru
+$timer=[Diagnostics.Stopwatch]::StartNew()
+while(!(Test-Path -LiteralPath $ready)) {
+    if($process.HasExited){throw 'Rust Android fixture failed; see ignored fixture logs'}
+    if($timer.Elapsed.TotalSeconds -gt 120){throw 'Rust Android fixture did not become ready'}
+    Start-Sleep -Milliseconds 200
+}
+$settings=Get-Content -LiteralPath $ready -Raw | ConvertFrom-Json
+$serverUri=[Uri]$settings.url
+if($serverUri.Host -ne '127.0.0.1'){throw 'Fixture must be loopback'}
+$port=$serverUri.Port
+$passed=$false
+Invoke-Adb reverse "tcp:$port" "tcp:$port"
+try {
+    Invoke-Tests 'io.dagaz.player.ServerPairingTest' 1 @{server_url=$settings.url;pairing_code=$settings.code}
+    $passed=$true
+} finally {
+    Set-Content -LiteralPath $finished -Value $(if($passed){'ok'}else{'failed'})
+    Invoke-Adb reverse --remove "tcp:$port"
+}
+if(!$process.WaitForExit(15000)){throw 'Rust fixture did not finish cleanup'}
+if($process.ExitCode -ne 0){throw 'Rust fixture reported failure'}
