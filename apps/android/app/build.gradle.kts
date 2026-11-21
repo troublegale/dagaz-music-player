@@ -19,6 +19,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     sourceSets["test"].resources.srcDir("../../../fixtures/contract")
+    sourceSets["androidTest"].assets.srcDir("../../../fixtures/audio")
 }
 dependencies {
     implementation(platform(libs.compose.bom))
@@ -29,6 +30,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation(libs.okhttp)
     implementation(libs.serialization.json)
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-session:1.8.0")
+    implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
+    implementation("androidx.media3:media3-database:1.8.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.mockwebserver)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

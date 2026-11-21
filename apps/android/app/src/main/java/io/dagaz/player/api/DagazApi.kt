@@ -20,7 +20,10 @@ enum class Failure(val label: String) {
     Unavailable("Сервер недоступен. Проверь адрес и подключение к сети."),
     InvalidResponse("Сервер вернул неожиданный ответ."),
     RateLimited("Слишком много запросов. Попробуй немного позже."),
-    Storage("Не удалось сохранить подключение на устройстве.")
+    Storage("Не удалось сохранить подключение на устройстве."),
+    Pending("Выбранное качество ещё готовится. Можно выбрать оригинал."),
+    MediaGone("Эта версия трека недоступна. Обнови библиотеку."),
+    Conflict("Подборка изменилась. Обнови её и попробуй снова.")
 }
 class ClientException(val failure: Failure) : Exception(failure.label)
 object ServerAddress {
@@ -50,17 +53,49 @@ class DagazApi(address: String) {
         val request = Request.Builder().url(origin.newBuilder().addPathSegments("api/v1/devices").addQueryParameter("limit", "1").build()).header("Authorization", "Bearer ${session.token}").build()
         execute(request, 200, Page.serializer(Device.serializer()))
     }
-    private suspend fun <T> execute(request: Request, expected: Int, serializer: KSerializer<T>): T = withContext(Dispatchers.IO) {
+    private fun authenticated(session: Session, url: HttpUrl): Request.Builder {
+        if (ServerAddress.parse(session.baseUrl) != origin) throw ClientException(Failure.InvalidAddress)
+        return Request.Builder().url(url).header("Authorization", "Bearer ${session.token}")
+    }
+    suspend fun tracks(session: Session, query: String = "", cursor: String? = null, albumId: java.util.UUID? = null, artistId: java.util.UUID? = null): Page<Track> {
+        val path=if(albumId==null)"api/v1/tracks" else "api/v1/albums/$albumId/tracks"
+        val url=origin.newBuilder().addPathSegments(path).addQueryParameter("q",query).addQueryParameter("limit","100")
+        if(cursor!=null)url.addQueryParameter("cursor",cursor)
+        if(artistId!=null)url.addQueryParameter("artist_id",artistId.toString())
+        return execute(authenticated(session,url.build()).build(),200,Page.serializer(Track.serializer()),4*1024*1024)
+    }
+    private fun listUrl(path:String,cursor:String?)=origin.newBuilder().addPathSegments("api/v1/$path").apply{if(cursor!=null)addQueryParameter("cursor",cursor)}.build()
+    suspend fun albums(session: Session,cursor:String?=null): Page<Album> = execute(authenticated(session,listUrl("albums",cursor)).build(),200,Page.serializer(Album.serializer()),4*1024*1024)
+    suspend fun artists(session: Session,cursor:String?=null): Page<Artist> = execute(authenticated(session,listUrl("artists",cursor)).build(),200,Page.serializer(Artist.serializer()),4*1024*1024)
+    suspend fun media(session:Session,track:Track,quality:Quality)=media(session,track.id,track.revision,quality)
+    suspend fun media(session: Session, id:java.util.UUID, revision:Long, quality: Quality): MediaDescriptor = withContext(Dispatchers.IO) {
+        val url=origin.newBuilder().addPathSegments("api/v1/tracks/$id/media").addQueryParameter("revision",revision.toString()).addQueryParameter("quality",quality.name).build()
+        try { http.newCall(authenticated(session,url).head().build()).execute().use { response ->
+            checkStatus(response.code,200)
+            val length=response.header("Content-Length")?.toLongOrNull()
+            val sha=response.header("X-Content-SHA256")
+            val etag=response.header("ETag")
+            if(length==null||length<0||sha==null||!sha.matches(Regex("[a-fA-F0-9]{64}"))||etag==null||!etag.startsWith('"')||!etag.endsWith('"')||etag.length>256)throw ClientException(Failure.InvalidResponse)
+            MediaDescriptor(id,revision,quality,quality,length,sha.lowercase(),etag,url.toString())
+        }} catch (_:IOException){throw ClientException(Failure.Unavailable)}
+    }
+    private fun checkStatus(code: Int, expected: Int) {
+        when(code) {
+            401,403 -> throw ClientException(Failure.PairingRequired)
+            404,410,412 -> throw ClientException(Failure.MediaGone)
+            409 -> throw ClientException(Failure.Conflict)
+            425 -> throw ClientException(Failure.Pending)
+            429 -> throw ClientException(Failure.RateLimited)
+            in 500..599 -> throw ClientException(Failure.Unavailable)
+        }
+        if(code!=expected)throw ClientException(Failure.InvalidResponse)
+    }
+    private suspend fun <T> execute(request: Request, expected: Int, serializer: KSerializer<T>, maxBytes: Int = 65536): T = withContext(Dispatchers.IO) {
         try {
             http.newCall(request).execute().use { response ->
-                when (response.code) {
-                    401, 403 -> throw ClientException(Failure.PairingRequired)
-                    429 -> throw ClientException(Failure.RateLimited)
-                    in 500..599 -> throw ClientException(Failure.Unavailable)
-                }
-                if (response.code != expected) throw ClientException(Failure.InvalidResponse)
+                checkStatus(response.code,expected)
                 val source = response.body?.source() ?: throw ClientException(Failure.InvalidResponse)
-                if (source.request(65537)) throw ClientException(Failure.InvalidResponse)
+                if (source.request(maxBytes.toLong()+1)) throw ClientException(Failure.InvalidResponse)
                 try { Wire.json.decodeFromString(serializer, source.readUtf8()) } catch (_: IllegalArgumentException) { throw ClientException(Failure.InvalidResponse) }
             }
         } catch (_: IOException) { throw ClientException(Failure.Unavailable) }

@@ -50,3 +50,35 @@ Not checked here: public VPS/HTTPS deployment, Android API 28, other phone vendo
 system font/locale variants, power loss during an atomic write or signing and
 distribution. The library and product playback service are A2 work. Earlier media
 probe tests do not establish production-client playback, offline or handoff readiness.
+
+## A2 playback checkpoint (in progress)
+
+2026-11-21, same Poco/API 36, production MediaSessionService with ExoPlayer.
+Three device tests pass together in 146.772 s: generated 30-second WAV and shared
+synthetic MP3/FLAC fixtures. They verify authenticated revision-pinned streaming,
+early WAV playback before the full response is buffered, seek to a duplicate queue
+occurrence, one player with multiple controllers, repeat/shuffle, Activity
+recreation and continued playback with the Activity stopped. Short compressed
+fixtures repeat for the background check; this is not a long-duration soak test.
+Debug/JVM checks and unsigned release assembly/lint pass (0 errors, 26 existing
+dependency/version-catalog suggestions). JVM coverage now includes paged Unicode
+catalog requests, HEAD descriptors, pending quality and bounded retry delays.
+
+Debugging: a test helper incorrectly nested runOnMainSync; removing that nested
+call fixed the test process crash. The mock media server then returned 200 for a
+bounded Range starting at byte zero, correctly rejected by the production header
+validator. The fixture now returns exact 206/Content-Range/length for all ranges;
+the three-format device run passes. No production validation was relaxed.
+
+The final playback run passes 4/4 in 196.975 s, adding recovery from an initial
+HTTP 503 while preserving a user pause until explicit play. Connection/Keystore
+and UI regression pass 2/2 in 6.022 s, including a Cyrillic search request and
+visible result through the dedicated Search tab. The Library tab has no search
+field. No tests in these runs were skipped. The device runner now rejects skipped
+or assumption-failed tests instead of treating their JUnit summary as success.
+
+Still pending: physical screen lock/headset/audio-focus checks, network loss during
+an established stream, next-track prefetch evidence and long/Doze playback.
+Playlists, explicit downloads, catalog persistence and device handoff are not
+validated or complete in this checkpoint. High/low remain HTTP 425 until S6;
+the app offers an explicit original-quality choice rather than falling back.

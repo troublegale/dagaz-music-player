@@ -17,6 +17,7 @@ data class ConnectionUiState(
     val address: String = "", val deviceName: String = Build.MODEL,
     val busy: Boolean = true, val paired: Boolean = false,
     val message: String = "Проверяем сохранённое подключение…", val error: Boolean = false
+    ,val connectionId:String?=null
 )
 class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
     private val credentials = Credentials(application)
@@ -27,7 +28,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         session = withContext(Dispatchers.IO) { credentials.load() }
         val saved = session
         if (saved == null) mutable.update { it.copy(message = "Введи адрес своего сервера и одноразовый код.") }
-        else { mutable.update { it.copy(address = saved.baseUrl, paired = true) }; check(saved) }
+        else { mutable.update { it.copy(address = saved.baseUrl, paired = true,connectionId=saved.deviceId.toString()) }; check(saved) }
     } }
     fun address(value: String) { if (!state.value.busy) mutable.update { it.copy(address = value) } }
     fun deviceName(value: String) { if (!state.value.busy) mutable.update { it.copy(deviceName = value) } }
@@ -40,7 +41,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             val connection = Session(api.baseUrl, paired.deviceId, paired.token)
             withContext(Dispatchers.IO) { credentials.save(connection) }
             session = connection
-            mutable.update { it.copy(address = connection.baseUrl, paired = true, message = "Подключено") }
+            mutable.update { it.copy(address = connection.baseUrl, paired = true,connectionId=connection.deviceId.toString(), message = "Подключено") }
         }
     }
     fun retry() { if (!state.value.busy) session?.let { saved -> execute { check(saved) } } }

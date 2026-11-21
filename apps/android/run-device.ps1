@@ -1,4 +1,4 @@
-param([ValidateSet('Pairing','RealServer')][string]$Phase='Pairing')
+param([ValidateSet('Pairing','RealServer','Playback')][string]$Phase='Pairing')
 $ErrorActionPreference='Stop'
 $repoRoot=(Resolve-Path -LiteralPath "$PSScriptRoot/../..").Path
 $adb=(Resolve-Path -LiteralPath "$repoRoot/.tools/android/platform-tools/adb.exe").Path
@@ -13,6 +13,7 @@ function Invoke-Tests([string]$Classes,[int]$Count,[hashtable]$Extra=@{}) {
     $instrumentArgs+='io.dagaz.player.test/androidx.test.runner.AndroidJUnitRunner'
     $result=Invoke-Adb @instrumentArgs
     $result | Out-Host
+    if(($result -join "`n") -match 'INSTRUMENTATION_STATUS_CODE: -(3|4)\b'){throw 'Android tests were skipped; the existing personal connection was preserved'}
     if(($result -join "`n") -notmatch "OK \($Count tests?\)"){throw 'Android instrumentation did not pass'}
 }
 & "$PSScriptRoot/gradlew.bat" -p $PSScriptRoot testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
@@ -22,6 +23,10 @@ Invoke-Adb install --no-streaming -r -t "$PSScriptRoot/app/build/outputs/apk/deb
 Invoke-Adb install --no-streaming -r -t "$PSScriptRoot/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 if($Phase -eq 'Pairing') {
     Invoke-Tests 'io.dagaz.player.PairingTest,io.dagaz.player.ConnectionScreenTest' 2
+    return
+}
+if($Phase -eq 'Playback') {
+    Invoke-Tests 'io.dagaz.player.PlaybackServiceTest' 4
     return
 }
 $env:DAGAZ_ANDROID_FIXTURE_DIR=$fixture

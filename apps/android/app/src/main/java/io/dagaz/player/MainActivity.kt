@@ -5,12 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -18,7 +20,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.util.UnstableApi
+import io.dagaz.player.library.*
 
+@UnstableApi
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,7 +40,15 @@ class MainActivity : ComponentActivity() {
             )) {
                 val model: ConnectionViewModel = viewModel()
                 val state by model.state.collectAsStateWithLifecycle()
-                ConnectionScreen(state, model::address, model::deviceName, model::connect, model::retry, model::rebind)
+                var settings by rememberSaveable { mutableStateOf(false) }
+                val library=if(state.paired)viewModel<LibraryViewModel>(key="library-${state.connectionId}")else null
+                var previous by remember { mutableStateOf<LibraryViewModel?>(null) }
+                LaunchedEffect(state.paired,state.connectionId){if(!state.paired){previous?.deactivate();previous=null}else{previous=library}}
+                if(state.paired&&!settings&&library!=null)LibraryScreen(library){settings=true}
+                else {
+                    BackHandler(enabled=state.paired){settings=false}
+                    ConnectionScreen(state,model::address,model::deviceName,model::connect,model::retry,{previous?.deactivate();model.rebind()},{settings=false})
+                }
             }
         }
     }
@@ -43,7 +56,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ConnectionScreen(
     state: ConnectionUiState, address: (String) -> Unit, deviceName: (String) -> Unit,
-    connect: (String) -> Unit, retry: () -> Unit, rebind: () -> Unit
+    connect: (String) -> Unit, retry: () -> Unit, rebind: () -> Unit, library:()->Unit
 ) {
     // Codes stay in memory and are never included in saved instance state or backups.
     var code by remember { mutableStateOf("") }
@@ -59,6 +72,7 @@ private fun ConnectionScreen(
                         Text(state.address, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Button(onClick = retry, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Проверить подключение") }
                         TextButton(onClick = rebind, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Привязать заново") }
+                        TextButton(onClick = library, modifier = Modifier.fillMaxWidth()) { Text("К библиотеке") }
                     } else {
                         Text("Подключение к серверу", style = MaterialTheme.typography.headlineSmall)
                         Text("Музыка хранится на твоём сервере. Подключи его к этому устройству.", color = MaterialTheme.colorScheme.onSurfaceVariant)
