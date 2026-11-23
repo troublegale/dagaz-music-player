@@ -191,9 +191,46 @@ pub(crate) async fn write_track(
         Entity::Track,
         track.id,
         track.revision,
-        Some(serde_json::to_value(track)?),
+        Some(serde_json::to_value(&*track)?),
     )
     .await?;
+    if let Some(album) = track.album_id {
+        refresh_album_artwork(tx, &album.to_string()).await?;
+    }
+    Ok(())
+}
+async fn refresh_album_artwork(
+    tx: &mut Transaction<'_, Sqlite>,
+    album: &str,
+) -> Result<(), AppError> {
+    let row: Option<(String, i64)> =
+        sqlx::query_as("SELECT data_json,revision FROM albums WHERE id=? AND deleted=0")
+            .bind(album)
+            .fetch_optional(&mut **tx)
+            .await?;
+    let Some((payload, revision)) = row else {
+        return Ok(());
+    };
+    let mut value: Album = serde_json::from_str(&payload)?;
+    let cover:Option<String>=sqlx::query_scalar("SELECT json_extract(data_json,'$.artwork_id') FROM tracks WHERE album_id=? AND deleted=0 AND json_extract(data_json,'$.artwork_id') IS NOT NULL ORDER BY sort_album_order,id LIMIT 1").bind(album).fetch_optional(&mut **tx).await?;
+    let cover = cover.map(|value| id(&value)).transpose()?;
+    if value.artwork_id != cover {
+        value.artwork_id = cover;
+        sqlx::query("UPDATE albums SET revision=?,data_json=? WHERE id=?")
+            .bind(revision + 1)
+            .bind(serde_json::to_string(&value)?)
+            .bind(album)
+            .execute(&mut **tx)
+            .await?;
+        crate::sync::record(
+            tx,
+            Entity::Album,
+            value.id,
+            revision + 1,
+            Some(serde_json::to_value(value)?),
+        )
+        .await?;
+    }
     Ok(())
 }
 pub(crate) async fn backfill(db: &SqlitePool) -> Result<(), AppError> {
@@ -226,6 +263,7 @@ pub(crate) async fn remove_orphans(
             }
             crate::sync::record(tx, Entity::Album, id(&album)?, revision, None).await?;
         }
+        refresh_album_artwork(tx, &album).await?;
     }
     for artist in artists {
         let revision:Option<i64>=sqlx::query_scalar("UPDATE artists SET deleted=1,revision=revision+1 WHERE id=? AND deleted=0 AND NOT EXISTS(SELECT 1 FROM tracks WHERE artist_id=? AND deleted=0) AND NOT EXISTS(SELECT 1 FROM albums WHERE album_artist_id=? AND deleted=0) RETURNING revision").bind(&artist).bind(&artist).bind(&artist).fetch_optional(&mut **tx).await?;

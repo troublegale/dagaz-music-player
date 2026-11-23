@@ -1,3 +1,4 @@
+mod artworks;
 mod auth;
 mod config;
 mod jobs;
@@ -6,6 +7,7 @@ mod media;
 mod operations;
 mod playlists;
 mod sync;
+mod tags;
 pub use media::descriptor as media_descriptor;
 mod uploads;
 pub use jobs::run_jobs;
@@ -30,6 +32,7 @@ pub struct AppState {
     limits: auth::RateLimits,
     job_notify: tokio::sync::Notify,
     media_slots: Arc<tokio::sync::Semaphore>,
+    artwork_slots: tokio::sync::Semaphore,
     active_reads: Arc<std::sync::Mutex<std::collections::HashMap<String, usize>>>,
 }
 impl AppState {
@@ -173,6 +176,7 @@ pub async fn open_state(
         limits: auth::RateLimits::default(),
         job_notify: tokio::sync::Notify::new(),
         media_slots: Arc::new(tokio::sync::Semaphore::new(16)),
+        artwork_slots: tokio::sync::Semaphore::new(1),
         active_reads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     }))
 }
@@ -191,6 +195,19 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/uploads/{id}/complete", post(uploads::complete))
         .route("/jobs/{id}", get(jobs::get))
+        .route(
+            "/artworks",
+            post(artworks::create).layer(DefaultBodyLimit::max(artworks::MAX_BYTES)),
+        )
+        .route("/artworks/{id}", get(artworks::get))
+        .route(
+            "/tracks/{id}/metadata",
+            axum::routing::patch(tags::edit).layer(DefaultBodyLimit::max(128 * 1024)),
+        )
+        .route(
+            "/tracks/metadata-batch",
+            post(tags::batch).layer(DefaultBodyLimit::max(128 * 1024)),
+        )
         .route("/tracks", get(library::tracks))
         .route(
             "/tracks/{id}",

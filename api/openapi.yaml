@@ -1576,6 +1576,18 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Omit for original; 256 for a PNG thumbnail fitting within 256×256",
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "enum": [
+                256
+              ],
+              "type": "integer"
+            }
           }
         ],
         "responses": {

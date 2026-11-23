@@ -166,3 +166,39 @@ Public HTTPS, installer, backups and service packaging are release work. Device
 presence currently reports offline; WebSocket sessions and immediate closure on
 revocation will be tested when S7 introduces those sessions. Linux SIGTERM
 handling is implemented, but this stage's executed checks were on Windows.
+
+## Metadata and artwork (S5)
+
+`PATCH /api/v1/tracks/{id}/metadata` accepts `expected_revision` and `patch`;
+send a UUID `Idempotency-Key`. Missing patch fields preserve their current values,
+`null` clears them, and a nonempty value replaces them. Text fields accept up to
+4096 UTF-8 bytes each. Reusing the same key and request returns the same Job;
+a changed request with that key or a stale single-track revision returns 409.
+
+`POST /api/v1/tracks/metadata-batch` accepts 1–100 distinct
+`{ track_id, expected_revision }` items and a common patch, also with an idempotency
+key. Both endpoints return 202 and a Job. Poll `/api/v1/jobs/{id}`. Its
+`result.items` contains each track's `status` and either `revision`/`track` or an
+`error`. Mixed success yields `partial`; a failed file does not roll back other
+successful files. Revision/CAS, catalog membership, search, changes and durable
+per-file progress commit together. A retry never publishes the same edit twice.
+
+Upload covers as binary `image/jpeg` or `image/png` to `POST /api/v1/artworks`;
+201 returns `{ id }`. Limits are 10 MiB and 25 million pixels; decoding is checked
+before creating a thumbnail. Reading requires authorization:
+`GET /api/v1/artworks/{id}` returns the original, and `?size=256` returns a PNG
+fitting within 256×256. URLs are not fetched. Only one HTTP cover upload is
+processed at a time; excess concurrent uploads return 429 for retry. The import
+worker can process one additional embedded cover independently.
+
+WAV RIFF/ID3, MP3 ID3v2 and FLAC Vorbis edits operate on a local working copy,
+then publish a new immutable S3 key. Existing playback keeps the old revision;
+superseded versions retain the S3 read path's 24-hour grace period. Only the front
+cover is replaced or cleared; other picture types are preserved. Import indexes
+embedded JPEG/PNG front covers. Album artwork is derived from the first covered
+track in album order and is updated in the same catalog transaction.
+
+Validation: `cargo test -p dagaz-server --test tags` uses real RustFS and the
+existing `dagaz-audio-tools:validation` Docker image for independent PCM checks.
+Orphan candidates/unused artworks and abandoned multipart uploads await S8's
+grace-period collector; this checkpoint does not enable production deployment.

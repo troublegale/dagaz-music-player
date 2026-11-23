@@ -143,6 +143,17 @@ impl TestServer {
                 .unwrap();
         }
     }
+    #[allow(dead_code)] // Only the metadata crash-recovery integration test injects a worker failure.
+    pub async fn expect_job_worker_failure(&mut self) {
+        let worker = self.worker.take().expect("worker must be running");
+        let error = tokio::time::timeout(std::time::Duration::from_secs(20), worker)
+            .await
+            .unwrap()
+            .unwrap()
+            .expect_err("worker should fail at injected database error");
+        assert_eq!(error.to_string(), "Database operation failed");
+        self.worker_stop.take();
+    }
     pub async fn restart(&mut self) {
         self.stop_http().await;
         self.db.close().await;

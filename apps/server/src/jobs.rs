@@ -27,7 +27,6 @@ struct JobRow {
     result_json: Option<String>,
     errors_json: String,
     attempts: i64,
-    s3_upload_id: Option<String>,
 }
 impl JobRow {
     fn dto(self) -> Result<Job, AppError> {
@@ -88,11 +87,15 @@ fn storage_unavailable() -> AppError {
     AppError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "storage_unavailable",
-        "Storage is temporarily unavailable; import will retry",
+        "Storage is temporarily unavailable; job will retry",
     )
 }
 
-fn inspect(path: PathBuf, upload: UploadRow, id: Uuid) -> Result<Track, AppError> {
+fn inspect(
+    path: PathBuf,
+    upload: UploadRow,
+    id: Uuid,
+) -> Result<(Track, Option<Vec<u8>>), AppError> {
     let mut file = std::fs::File::open(&path)?;
     if file.metadata()?.len() != upload.total_bytes as u64 {
         return Err(invalid_audio());
@@ -126,6 +129,21 @@ fn inspect(path: PathBuf, upload: UploadRow, id: Uuid) -> Result<Track, AppError
         _ => return Err(invalid_audio()),
     };
     let tag = audio.tag(TagType::Id3v2).or_else(|| audio.primary_tag());
+    let cover = tag
+        .and_then(|tag| {
+            tag.pictures()
+                .iter()
+                .find(|picture| picture.pic_type() == lofty::picture::PictureType::CoverFront)
+        })
+        .map(|picture| picture.data());
+    if cover.is_some_and(|bytes| bytes.len() > crate::artworks::MAX_BYTES) {
+        return Err(AppError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid_artwork",
+            "Embedded artwork exceeds 10 MiB",
+        ));
+    }
+    let cover = cover.map(<[u8]>::to_vec);
     let track = Track {
         id,
         revision: 1,
@@ -162,13 +180,14 @@ fn inspect(path: PathBuf, upload: UploadRow, id: Uuid) -> Result<Track, AppError
         ready_qualities: vec![Quality::Original],
     };
     crate::library::validate_track(&track)?;
-    Ok(track)
+    Ok((track, cover))
 }
 
-async fn publish_object(
+pub(crate) async fn publish_object(
     state: &AppState,
-    job: &JobRow,
-    upload: &UploadRow,
+    job_id: &str,
+    total_bytes: i64,
+    sha256: &str,
     path: &std::path::Path,
     key: &str,
 ) -> Result<String, AppError> {
@@ -181,9 +200,12 @@ async fn publish_object(
         .await;
     match head {
         Ok(head) => {
-            if head.content_length() != Some(upload.total_bytes)
-                || head.metadata().and_then(|metadata| metadata.get("sha256"))
-                    != Some(&upload.sha256)
+            if head.content_length() != Some(total_bytes)
+                || head
+                    .metadata()
+                    .and_then(|metadata| metadata.get("sha256"))
+                    .map(String::as_str)
+                    != Some(sha256)
             {
                 return Err(AppError::internal(
                     "Stored object revision failed validation",
@@ -200,7 +222,11 @@ async fn publish_object(
                 .is_some_and(|response| response.status().as_u16() == 404) => {}
         Err(_) => return Err(storage_unavailable()),
     }
-    let mut multipart = job.s3_upload_id.clone();
+    let mut multipart: Option<String> =
+        sqlx::query_scalar("SELECT s3_upload_id FROM jobs WHERE id=?")
+            .bind(job_id)
+            .fetch_one(&state.db)
+            .await?;
     let mut existing = BTreeMap::new();
     if let Some(id) = &multipart {
         let mut marker = None;
@@ -253,7 +279,7 @@ async fn publish_object(
             .create_multipart_upload()
             .bucket(&state.config.s3_bucket)
             .key(key)
-            .metadata("sha256", &upload.sha256)
+            .metadata("sha256", sha256)
             .send()
             .await
             .map_err(|_| storage_unavailable())?;
@@ -263,7 +289,7 @@ async fn publish_object(
             .to_owned();
         sqlx::query("UPDATE jobs SET s3_upload_id=? WHERE id=?")
             .bind(&id)
-            .bind(&job.id)
+            .bind(job_id)
             .execute(&state.db)
             .await?;
         id
@@ -271,8 +297,8 @@ async fn publish_object(
     let mut offset = 0u64;
     let mut number = 1i32;
     let mut parts = Vec::new();
-    while offset < upload.total_bytes as u64 {
-        let length = (upload.total_bytes as u64 - offset).min(8 * 1024 * 1024);
+    while offset < total_bytes as u64 {
+        let length = (total_bytes as u64 - offset).min(8 * 1024 * 1024);
         let etag = if let Some((etag, size)) = existing
             .get(&number)
             .filter(|(_, size)| *size == length as i64)
@@ -313,7 +339,7 @@ async fn publish_object(
         number += 1;
         sqlx::query("UPDATE jobs SET progress_bytes=? WHERE id=?")
             .bind(offset as i64)
-            .bind(&job.id)
+            .bind(job_id)
             .execute(&state.db)
             .await?;
     }
@@ -353,16 +379,34 @@ async fn import(state: &AppState, job: &JobRow) -> Result<(), AppError> {
     let sha256 = upload.sha256.clone();
     let bytes = upload.total_bytes;
     let source_path = path.clone();
-    let mut track = tokio::task::spawn_blocking(move || inspect(source_path, upload, id))
+    let (mut track, cover) = tokio::task::spawn_blocking(move || inspect(source_path, upload, id))
         .await
         .map_err(|_| AppError::internal("Audio inspection failed"))??;
     let duplicate:Option<String>=sqlx::query_scalar("SELECT r.track_id FROM media_revisions r JOIN tracks t ON t.id=r.track_id WHERE r.sha256=? AND t.deleted=0 LIMIT 1").bind(&sha256).fetch_optional(&state.db).await?;
     let final_id = if let Some(id) = duplicate {
         id
     } else {
+        if let Some(cover) = cover {
+            let mime = match image::guess_format(&cover)
+                .map_err(|_| AppError::invalid("Invalid embedded artwork"))?
+            {
+                image::ImageFormat::Png => "image/png",
+                image::ImageFormat::Jpeg => "image/jpeg",
+                _ => return Err(AppError::invalid("Embedded artwork must be JPEG or PNG")),
+            };
+            track.artwork_id = Some(crate::artworks::store(state, id, mime, cover).await?);
+        }
         let key = format!("tracks/{id}/1/original");
         let upload = crate::uploads::load(state, upload_id).await?;
-        let storage_etag = publish_object(state, job, &upload, &path, &key).await?;
+        let storage_etag = publish_object(
+            state,
+            &job.id,
+            upload.total_bytes,
+            &upload.sha256,
+            &path,
+            &key,
+        )
+        .await?;
         let mut tx = state.db.begin_with("BEGIN IMMEDIATE").await?;
         crate::library::write_track(&mut tx, &mut track).await?;
         sqlx::query("INSERT INTO media_revisions(track_id,revision,quality,object_key,byte_length,sha256,etag,storage_etag,created_at) VALUES(?,1,'original',?,?,?,?,?,?)").bind(id.to_string()).bind(&key).bind(bytes).bind(&sha256).bind(format!("\"{sha256}\"")).bind(storage_etag).bind(crate::unix_time()?).execute(&mut *tx).await?;
@@ -406,6 +450,8 @@ pub async fn run_jobs(
         if let Some(job) = job {
             let result = if job.kind == "import" {
                 import(&state, &job).await
+            } else if job.kind == "retag" {
+                crate::tags::run(&state, &job.id).await
             } else {
                 Err(AppError::internal("Unsupported job kind"))
             };

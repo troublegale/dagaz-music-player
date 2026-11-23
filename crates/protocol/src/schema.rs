@@ -241,6 +241,8 @@ pub fn openapi_document() -> Value {
                 json!({"name":"If-Range","in":"header","schema":{"type":"string"}}),
                 json!({"name":"If-Match","in":"header","schema":{"type":"string"}}),
             ]);
+        } else {
+            parameters.push(json!({"name":"size","in":"query","required":false,"description":"Omit for original; 256 for a PNG thumbnail fitting within 256×256","schema":{"type":"integer","enum":[256]}}));
         }
         let headers = json!({"ETag":{"schema":{"type":"string"}},"Content-Length":{"schema":{"type":"integer","minimum":0}},"Content-Range":{"schema":{"type":"string"}},"Accept-Ranges":{"schema":{"type":"string"}}});
         let full = json!({"description":"File bytes","headers":headers,"content":{"application/octet-stream":{"schema":{"type":"string","format":"binary"}}}});

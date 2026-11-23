@@ -2,6 +2,19 @@ use dagaz_protocol::openapi_document;
 use serde_json::json;
 
 #[test]
+fn artwork_thumbnail_size_is_explicit() {
+    let doc = openapi_document();
+    let parameters = doc["paths"]["/api/v1/artworks/{id}"]["get"]["parameters"]
+        .as_array()
+        .unwrap();
+    let size = parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "size")
+        .expect("thumbnail query must be documented");
+    assert_eq!(size["schema"]["enum"], json!([256]));
+}
+
+#[test]
 fn metadata_schema_accepts_clear_but_rejects_wrong_type_and_typo() {
     let mut doc = openapi_document();
     doc["$ref"] = json!("#/components/schemas/MetadataPatch");
