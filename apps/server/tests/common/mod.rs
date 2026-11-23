@@ -1,4 +1,5 @@
 use dagaz_protocol::{PairRequest, PairResponse, Platform};
+pub mod audio;
 use dagaz_server::{Config, create_s3, open_database, open_state, router, run_jobs};
 use sqlx::SqlitePool;
 use std::{net::SocketAddr, path::PathBuf};
@@ -52,6 +53,9 @@ impl TestServer {
             s3_secret_key: value("DAGAZ_TEST_S3_SECRET_KEY"),
             max_upload_bytes: 8 * 1024 * 1024 * 1024,
             min_free_bytes: 128 * 1024 * 1024,
+            ffmpeg_path: media_tool("ffmpeg"),
+            ffprobe_path: media_tool("ffprobe"),
+            media_timeout: std::time::Duration::from_secs(30),
         };
         let s3 = create_s3(&config).unwrap();
         s3.create_bucket()
@@ -200,5 +204,18 @@ impl Drop for TestServer {
         if let Some(worker) = self.worker.take() {
             worker.abort();
         }
+    }
+}
+
+fn media_tool(name: &str) -> PathBuf {
+    if let Some(path) = std::env::var_os(format!("DAGAZ_TEST_{}", name.to_ascii_uppercase())) {
+        return PathBuf::from(path);
+    }
+    if cfg!(windows) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.tools/ffmpeg/ffmpeg-9.1-essentials_build/bin")
+            .join(format!("{name}.exe"))
+    } else {
+        PathBuf::from(name)
     }
 }

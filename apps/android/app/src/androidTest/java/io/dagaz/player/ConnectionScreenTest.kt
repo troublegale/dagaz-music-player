@@ -8,7 +8,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.dagaz.player.api.*
 import okhttp3.mockwebserver.*
-import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,7 +23,7 @@ class ConnectionScreenTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = java.io.File(context.noBackupFilesDir, "connection.json")
         // Do not replace an existing personal connection when running instrumentation later.
-        assumeFalse(file.exists())
+        requireEmptyConnectionFixture(file)
         val revoked = AtomicBoolean(false)
         val used = AtomicBoolean(false)
         val search = java.util.concurrent.atomic.AtomicReference<String>()

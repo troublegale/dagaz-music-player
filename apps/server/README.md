@@ -99,10 +99,9 @@ measurement of total process RAM.
 
 An old revision remains readable for 24 hours after `superseded_at`; expired or
 removed revisions return 410. In-flight bodies retain a lease for the future S8
-garbage collector. Object cleanup itself is not implemented yet. Until S6
-introduces representation jobs, high/low requests return 425 without a job ID;
-they never silently return a different quality. The shared descriptor helper is
-available for S6's download manifests.
+garbage collector. Object cleanup itself is not implemented yet. High/low use
+durable representation jobs and return 425 with a job ID while pending, as
+described below. The shared descriptor helper also serves download manifests.
 
 Tests cover a real import-to-media download with byte equality, revision changes,
 Range/If-Range/If-Match, HEAD, filename safety, and resource release. Held response
@@ -202,3 +201,48 @@ Validation: `cargo test -p dagaz-server --test tags` uses real RustFS and the
 existing `dagaz-audio-tools:validation` Docker image for independent PCM checks.
 Orphan candidates/unused artworks and abandoned multipart uploads await S8's
 grace-period collector; this checkpoint does not enable production deployment.
+
+## Quality variants and download snapshots (S6)
+
+Install FFmpeg with libmp3lame and FFprobe for the server. Defaults are `ffmpeg`
+and `ffprobe` on PATH; `DAGAZ_FFMPEG` / `DAGAZ_FFPROBE` can select executable paths.
+`DAGAZ_MEDIA_TIMEOUT_SECONDS` defaults to 300 and accepts 1–3600 seconds. Originals
+remain available when tools are missing; the affected jobs retry with backoff.
+
+Import and retag enqueue high (MP3 320 kbit/s) and low (MP3 128 kbit/s) once per
+track/revision/profile. The worker awaits each probe/encode in sequence; import
+and metadata jobs take priority over queued transcodes. Tool arguments use no
+shell, input formats are fixed to WAV/MP3/FLAC and network protocols are disabled.
+On timeout the child is killed and awaited before continuing; partial files are
+removed. Permanent conversion failures end that job, leaving originals and other
+jobs usable. S3 failures and unavailable tools retry the same durable job.
+
+An MP3 whose FFprobe audio bitrate is already at or below the chosen target reuses
+the original byte-for-byte. `requested_quality` and `effective_quality` distinguish
+this reuse. Ready media replies include `X-Effective-Quality` and a canonical
+`Content-Location`; derived bytes have `audio/mpeg` and an MP3 filename. Pending
+GET/HEAD returns 425 with `X-Job-Id` (and `ApiError.job_id` in a GET body). A failed
+quality returns 422 with that job ID. Readiness updates the catalog change sequence
+without changing the file revision. WebSocket hints remain S7 work; clients can
+poll jobs and catalog changes.
+
+`POST /api/v1/download-manifests` takes `{ kind, id, quality }` and a UUID
+`Idempotency-Key`, returning 201 `{ id }`. `kind` is `track`, `album` or `playlist`.
+Membership and exact file revisions are copied in one SQLite transaction and
+expire after 24 hours. Playlist order and duplicate occurrences are retained;
+album order follows the catalog. Playlist selection revision is its captured
+revision; track selection revision is its file revision; albums use the captured
+catalog high watermark because album DTOs have no membership revision.
+
+Read `GET /api/v1/download-manifests/{id}?limit=100&cursor=...` (maximum 500).
+Descriptors contain final length, SHA-256, ETag, effective quality and canonical
+URL. A pending representation returns 425/job ID; retry the same page after it is
+ready. Playlist or tag edits cannot change existing manifest members/revisions.
+Unexpired manifests pin a deleted or superseded source. Expired manifests return
+410; explicitly create a new one with a new operation key. Reusing an old key
+returns the same manifest, including its original expiry.
+
+Tests: `cargo test -p dagaz-server --test qualities --test manifests`.
+Windows test defaults use ignored `.tools/ffmpeg/ffmpeg-9.1-essentials_build/bin`;
+`DAGAZ_TEST_FFMPEG` / `DAGAZ_TEST_FFPROBE` override those paths. On Linux tests use
+PATH. Client download storage and shared offline pins remain A3/W3 work.

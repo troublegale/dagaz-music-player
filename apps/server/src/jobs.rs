@@ -427,6 +427,18 @@ async fn finish(
     upload: &str,
     track: &str,
 ) -> Result<(), AppError> {
+    let revision: i64 = sqlx::query_scalar("SELECT revision FROM tracks WHERE id=?")
+        .bind(track)
+        .fetch_one(&mut **tx)
+        .await?;
+    crate::qualities::enqueue(
+        tx,
+        track
+            .parse()
+            .map_err(|_| AppError::internal("Invalid track ID"))?,
+        revision,
+    )
+    .await?;
     sqlx::query("UPDATE jobs SET status='succeeded',result_json=?,errors_json='[]',s3_upload_id=NULL WHERE id=?").bind(serde_json::json!({"track_id":track}).to_string()).bind(&job.id).execute(&mut **tx).await?;
     sqlx::query("UPDATE uploads SET status='completed' WHERE id=?")
         .bind(upload)
@@ -446,10 +458,12 @@ pub async fn run_jobs(
         if *shutdown.borrow() {
             return Ok(());
         }
-        let job:Option<JobRow>=sqlx::query_as("UPDATE jobs SET status='running',attempts=attempts+1 WHERE id=(SELECT id FROM jobs WHERE status='queued' AND not_before<=? ORDER BY rowid LIMIT 1) RETURNING *").bind(crate::unix_time()?).fetch_optional(&state.db).await?;
+        let job:Option<JobRow>=sqlx::query_as("UPDATE jobs SET status='running',attempts=attempts+1 WHERE id=(SELECT id FROM jobs WHERE status='queued' AND not_before<=? ORDER BY CASE WHEN kind='transcode' THEN 1 ELSE 0 END,rowid LIMIT 1) RETURNING *").bind(crate::unix_time()?).fetch_optional(&state.db).await?;
         if let Some(job) = job {
             let result = if job.kind == "import" {
                 import(&state, &job).await
+            } else if job.kind == "transcode" {
+                crate::qualities::run(&state, &job.id).await
             } else if job.kind == "retag" {
                 crate::tags::run(&state, &job.id).await
             } else {

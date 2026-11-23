@@ -23,7 +23,8 @@ enum class Failure(val label: String) {
     Storage("Не удалось сохранить подключение на устройстве."),
     Pending("Выбранное качество ещё готовится. Можно выбрать оригинал."),
     MediaGone("Эта версия трека недоступна. Обнови библиотеку."),
-    Conflict("Подборка изменилась. Обнови её и попробуй снова.")
+    Conflict("Подборка изменилась. Обнови её и попробуй снова."),
+    QualityFailed("Выбранное качество недоступно. Попробуй оригинал.")
 }
 class ClientException(val failure: Failure) : Exception(failure.label)
 object ServerAddress {
@@ -71,12 +72,17 @@ class DagazApi(address: String) {
     suspend fun media(session: Session, id:java.util.UUID, revision:Long, quality: Quality): MediaDescriptor = withContext(Dispatchers.IO) {
         val url=origin.newBuilder().addPathSegments("api/v1/tracks/$id/media").addQueryParameter("revision",revision.toString()).addQueryParameter("quality",quality.name).build()
         try { http.newCall(authenticated(session,url).head().build()).execute().use { response ->
+            if(response.code==422)throw ClientException(Failure.QualityFailed)
             checkStatus(response.code,200)
             val length=response.header("Content-Length")?.toLongOrNull()
             val sha=response.header("X-Content-SHA256")
             val etag=response.header("ETag")
             if(length==null||length<0||sha==null||!sha.matches(Regex("[a-fA-F0-9]{64}"))||etag==null||!etag.startsWith('"')||!etag.endsWith('"')||etag.length>256)throw ClientException(Failure.InvalidResponse)
-            MediaDescriptor(id,revision,quality,quality,length,sha.lowercase(),etag,url.toString())
+            val effective=response.header("X-Effective-Quality")?.let{value->Quality.entries.find{it.name==value}?:throw ClientException(Failure.InvalidResponse)}?:quality
+            if(effective!=Quality.original&&effective!=quality)throw ClientException(Failure.InvalidResponse)
+            if(quality==Quality.original&&effective!=Quality.original)throw ClientException(Failure.InvalidResponse)
+            val canonical=url.newBuilder().setQueryParameter("quality",effective.name).build()
+            MediaDescriptor(id,revision,quality,effective,length,sha.lowercase(),etag,canonical.toString())
         }} catch (_:IOException){throw ClientException(Failure.Unavailable)}
     }
     private fun checkStatus(code: Int, expected: Int) {

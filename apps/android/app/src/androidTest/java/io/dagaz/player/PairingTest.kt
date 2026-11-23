@@ -16,6 +16,11 @@ import java.util.UUID
 class PairingTest {
     @Test fun credentialRestore() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val guard=java.io.File(context.cacheDir,"connection-guard-${UUID.randomUUID()}")
+        for(suffix in listOf("",".bak",".new")){
+            val candidate=java.io.File(guard.path+suffix);assertTrue(candidate.createNewFile())
+            try{candidate.writeText("test-owned");try{requireEmptyConnectionFixture(guard);fail("Fixture must preserve AtomicFile state $suffix")}catch(_:org.junit.AssumptionViolatedException){};assertEquals("test-owned",candidate.readText())}finally{candidate.delete()}
+        }
         val namespace = "test-${UUID.randomUUID()}"
         val credentials = Credentials(context, namespace)
         val file = java.io.File(context.noBackupFilesDir, "$namespace.json")

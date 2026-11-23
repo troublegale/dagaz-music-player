@@ -19,6 +19,9 @@ pub struct Config {
     pub s3_secret_key: String,
     pub max_upload_bytes: u64,
     pub min_free_bytes: u64,
+    pub ffmpeg_path: PathBuf,
+    pub ffprobe_path: PathBuf,
+    pub media_timeout: Duration,
 }
 impl Config {
     pub fn from_env() -> Result<Self, AppError> {
@@ -42,6 +45,18 @@ impl Config {
                 .unwrap_or_else(|_| "8589934592".into())
                 .parse()
                 .map_err(|_| AppError::invalid("Invalid DAGAZ_MAX_UPLOAD_BYTES"))?,
+            ffmpeg_path: std::env::var_os("DAGAZ_FFMPEG")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| "ffmpeg".into()),
+            ffprobe_path: std::env::var_os("DAGAZ_FFPROBE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| "ffprobe".into()),
+            media_timeout: Duration::from_secs(
+                std::env::var("DAGAZ_MEDIA_TIMEOUT_SECONDS")
+                    .unwrap_or_else(|_| "300".into())
+                    .parse()
+                    .map_err(|_| AppError::invalid("Invalid media timeout"))?,
+            ),
             min_free_bytes: std::env::var("DAGAZ_MIN_FREE_BYTES")
                 .unwrap_or_else(|_| "134217728".into())
                 .parse()
@@ -51,6 +66,13 @@ impl Config {
         Ok(config)
     }
     pub(crate) fn validate(&self) -> Result<(), AppError> {
+        if self.media_timeout.is_zero()
+            || self.media_timeout > Duration::from_secs(3600)
+            || self.ffmpeg_path.as_os_str().is_empty()
+            || self.ffprobe_path.as_os_str().is_empty()
+        {
+            return Err(AppError::invalid("Invalid media tool path or timeout"));
+        }
         if self.max_upload_bytes == 0 || self.max_upload_bytes > i64::MAX as u64 {
             return Err(AppError::invalid("Invalid maximum upload size"));
         }

@@ -99,5 +99,35 @@ Still pending for release: long/Doze playback, extended real mobile-network
 outages and other devices/API levels. This short screen-off check is not a Doze
 soak test.
 Playlists, explicit downloads, catalog persistence and device handoff are not
-validated or complete in this checkpoint. High/low remain HTTP 425 until S6;
-the app offers an explicit original-quality choice rather than falling back.
+validated or complete in this checkpoint. At A2 high/low returned HTTP 425 until
+S6; the app offered an explicit original choice rather than falling back.
+
+## S6 integration — 2026-11-23
+
+The device regression passes 9/9. The added test queues a
+different track with requested high/effective original and verifies a canonical
+original cache key with no duplicate high key. Before the fix this test failed
+and the JVM test read high as the effective quality. Resolution now runs before
+CacheDataSource selects its key, and descriptor pruning keeps canonical aliases.
+The queued descriptor first returns HTTP 425, then becomes ready; this exposed
+and fixed a terminal-error classification that previously stopped the queue.
+Pending preparation now uses the existing bounded-backoff retry policy.
+Origin/path/revision/quality checks still run before cache or authenticated reads.
+Seven JVM tests pass, including header validation and a clear message for a
+terminal quality-generation failure. Debug and unsigned release builds/lint pass.
+
+`ServerPlaybackTest` passes 1/1 against real Rust HTTP + SQLite +
+isolated RustFS through USB forwarding. The fixture imports a synthetic 30-second
+WAV, generates both MP3 profiles using native FFmpeg, and imports an existing low
+bitrate MP3. The production service plays original/high/low, advances after a
+1000 ms start, and plays the reused original for requested high with one cache
+representation. No personal connection or music is used. The fixture and test
+both clean their credentials/session and temporary server resources.
+
+The final pipeline also passes both pairing/screen tests and unsigned release
+build/lint. The credential guard covers the main connection file and AtomicFile
+`.bak`/`.new` files; a regression check uses synthetic files and verifies that
+the guard preserves their contents. No personal session is removed to run tests.
+
+These are short functional checks, not a metro/Doze soak or a public VPS test.
+Explicit offline downloads, persistent catalog and device handoff remain later work.

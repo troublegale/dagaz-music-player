@@ -2,6 +2,18 @@ use dagaz_protocol::openapi_document;
 use serde_json::json;
 
 #[test]
+fn quality_headers_and_pending_head_job_are_documented() {
+    let doc = openapi_document();
+    let responses = &doc["paths"]["/api/v1/tracks/{id}/media"]["head"]["responses"];
+    assert!(responses["200"]["headers"]["X-Effective-Quality"].is_object());
+    assert!(responses["200"]["headers"]["Content-Location"].is_object());
+    assert_eq!(
+        responses["425"]["headers"]["X-Job-Id"]["schema"]["format"],
+        "uuid"
+    );
+}
+
+#[test]
 fn artwork_thumbnail_size_is_explicit() {
     let doc = openapi_document();
     let parameters = doc["paths"]["/api/v1/artworks/{id}"]["get"]["parameters"]

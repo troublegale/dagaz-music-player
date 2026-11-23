@@ -52,3 +52,50 @@ actual Ubuntu VPS, and server job concurrency/restart behavior remain unmeasured
 The probe requires Docker bind-mount-compatible local paths and hard-link support
 on the output filesystem. It does not replace S6's authenticated media jobs or
 promise a latency bound for a particular VPS tariff. P6 remains partial.
+
+## S6 server checkpoint — 2026-11-23
+
+The production server now queues durable per-track/revision/profile jobs after
+import and retag, with a unique database key and one awaited conversion at a time.
+It reuses MP3 originals at or below the target bitrate, copies tags/front covers
+into MP3 derivatives, validates duration/format and publishes immutable RustFS
+objects. Originals remain available throughout. GET/HEAD expose effective quality
+and canonical URLs; pending requests expose their stable job ID.
+
+Validation uses native FFmpeg/FFprobe 9.1 on Windows, from the Gyan essentials
+build linked by [FFmpeg's download page](https://ffmpeg.org/download.html).
+Archive source: [Gyan builds](https://www.gyan.dev/ffmpeg/builds/).
+Verified ZIP SHA-256:
+`b9bbbb3acece000cbeec994f856649354e52c773807841e78908374b24d658fd`.
+Tools stay in ignored `.tools`; they are not added to the product or system PATH.
+
+The new integration tests cover concurrent demand returning the same job,
+byte-for-byte MP3 reuse, actual 128 kbit/s stream rate via independent FFprobe,
+metadata/front-cover preservation, durable results after restart, timeout/partial
+cleanup, recovery after restoring a missing encoder, and skipping deleted unpinned
+sources. Other quality jobs and originals survive a permanent conversion failure.
+
+Manifest tests cover a transactional 24-hour snapshot for track/album/playlist,
+album order, duplicate playlist occurrences, pagination/cursor scope, membership
+changes after creation, metadata revision changes, pending qualities, expiry and
+pins retaining deleted/superseded sources. Sources are not silently replaced by a
+new revision during a download. Expiry tests use controlled temporary database
+timestamps, not a 24-hour wall-clock wait.
+
+On the Poco, production playback passes the nine-test regression and a separate
+real Rust/RustFS integration test for original/high/low plus an original alias;
+see [Android validation](android-client.md). The new native regression exposed and
+fixed a duplicate cache key for requested high/effective original. Explicit offline
+downloads are still A3 work.
+
+Remaining release checks: CPU/RAM and encoding time on the actual Ubuntu VPS,
+forced OS/service termination, long queues and real metro/Doze playback. Orphan
+objects, expired manifest rows and abandoned multipart cleanup remain S8 gates.
+One parallel workspace build hit split rlib/rmeta metadata errors in the local
+Rust toolchain; a serial `cargo test --workspace -j 1` rebuild passed.
+
+Final workspace verification: 51 passed, zero failed, three opt-in/helper tests
+ignored by the standard run. Clippy passes for all workspace targets, including
+the Windows UI feature, with warnings denied. Encoder inputs force the stored
+audio container and allow only file/pipe protocols; the free-space check budgets
+for expanded output before encoding compressed sources.

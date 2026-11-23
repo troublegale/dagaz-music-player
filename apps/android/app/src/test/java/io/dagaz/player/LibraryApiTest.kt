@@ -9,6 +9,18 @@ import org.junit.Test
 import java.util.UUID
 
 class LibraryApiTest {
+    @Test fun reusedQualityHasCanonicalOriginalUrl() = runBlocking {
+        MockWebServer().use {server->
+            server.start();val api=DagazApi(server.url("/").toString());val session=Session(api.baseUrl,UUID.randomUUID(),"d".repeat(64));val id=UUID.randomUUID();val hash="a".repeat(64)
+            server.enqueue(MockResponse().setHeader("Content-Length",123).setHeader("ETag","\"$hash\"").setHeader("X-Content-SHA256",hash).setHeader("X-Effective-Quality","original"))
+            val media=api.media(session,id,1,Quality.high)
+            assertEquals(Quality.high,media.requestedQuality);assertEquals(Quality.original,media.effectiveQuality);assertTrue(media.url.endsWith("quality=original"))
+            server.enqueue(MockResponse().setHeader("Content-Length",123).setHeader("ETag","\"$hash\"").setHeader("X-Content-SHA256",hash).setHeader("X-Effective-Quality","high"))
+            try{api.media(session,id,1,Quality.original);fail()}catch(error:ClientException){assertEquals(Failure.InvalidResponse,error.failure)}
+            server.enqueue(MockResponse().setResponseCode(422))
+            try{api.media(session,id,1,Quality.high);fail()}catch(error:ClientException){assertEquals("Выбранное качество недоступно. Попробуй оригинал.",error.failure.label)}
+        }
+    }
     @Test fun catalogAndPinnedMedia() = runBlocking {
         MockWebServer().use { server ->
             server.start()

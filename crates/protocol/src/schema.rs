@@ -244,7 +244,12 @@ pub fn openapi_document() -> Value {
         } else {
             parameters.push(json!({"name":"size","in":"query","required":false,"description":"Omit for original; 256 for a PNG thumbnail fitting within 256×256","schema":{"type":"integer","enum":[256]}}));
         }
-        let headers = json!({"ETag":{"schema":{"type":"string"}},"Content-Length":{"schema":{"type":"integer","minimum":0}},"Content-Range":{"schema":{"type":"string"}},"Accept-Ranges":{"schema":{"type":"string"}}});
+        let mut headers = json!({"ETag":{"schema":{"type":"string"}},"Content-Length":{"schema":{"type":"integer","minimum":0}},"Content-Range":{"schema":{"type":"string"}},"Accept-Ranges":{"schema":{"type":"string"}}});
+        if ranged {
+            headers["X-Effective-Quality"] =
+                json!({"schema":{"$ref":"#/components/schemas/Quality"}});
+            headers["Content-Location"] = json!({"schema":{"type":"string"}});
+        }
         let full = json!({"description":"File bytes","headers":headers,"content":{"application/octet-stream":{"schema":{"type":"string","format":"binary"}}}});
         let mut responses = json!({"200":full,"default":{"description":"Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}}});
         if ranged {
@@ -257,6 +262,8 @@ pub fn openapi_document() -> Value {
             ] {
                 responses[status] = json!({"description":description,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}});
             }
+            responses["425"]["headers"] =
+                json!({"X-Job-Id":{"schema":{"type":"string","format":"uuid"}}});
         }
         paths.insert(
             path.into(),

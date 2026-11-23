@@ -16,7 +16,6 @@ import io.dagaz.player.playback.*
 import okhttp3.mockwebserver.*
 import okio.Buffer
 import org.junit.Assert.*
-import org.junit.Assume.assumeFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.nio.ByteBuffer
@@ -40,24 +39,30 @@ class PlaybackServiceTest {
     @Test fun audioFocusRespectsUserPause() = verifyPlayback(wave(), "audio/wav", true, focus = true)
     @Test fun nextTrackIsBuffered() = verifyPlayback(wave(), "audio/wav", true, prefetch = true)
     @Test fun prepareKeepsPaused() = verifyPlayback(wave(), "audio/wav", true, pausedPrepare = true)
+    @Test fun aliasedQualityUsesCanonicalCache() = verifyPlayback(audioFixture("profiles/low.mp3"),"audio/mpeg",false,alias=true)
 
     private fun audioFixture(name: String): ByteArray =
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open(name).use { it.readBytes() }
 
-    private fun verifyPlayback(bytes: ByteArray, mime: String, longFixture: Boolean, retry: Boolean = false, disconnect: Boolean = false, focus: Boolean = false, prefetch: Boolean = false, pausedPrepare: Boolean = false) {
+    private fun verifyPlayback(bytes: ByteArray, mime: String, longFixture: Boolean, retry: Boolean = false, disconnect: Boolean = false, focus: Boolean = false, prefetch: Boolean = false, pausedPrepare: Boolean = false, alias: Boolean = false) {
         val context=ApplicationProvider.getApplicationContext<Context>()
-        val file=java.io.File(context.noBackupFilesDir,"connection.json"); assumeFalse(file.exists())
+        val file=java.io.File(context.noBackupFilesDir,"connection.json"); requireEmptyConnectionFixture(file)
         val power=context.getSystemService(android.os.PowerManager::class.java)
         assertTrue("unlock the phone before starting playback tests",power.isInteractive)
         val hash=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val id=UUID.randomUUID(); val etag="\"$hash\""; val requests=java.util.concurrent.atomic.AtomicInteger()
         val ranges=ConcurrentLinkedQueue<String>()
+        val headRequests=java.util.concurrent.atomic.AtomicInteger()
         val interrupted=CountDownLatch(1)
         val resumed=CountDownLatch(1);val nextRequested=CountDownLatch(1);val nextId=UUID.randomUUID()
         MockWebServer().use { server ->
             server.dispatcher=object:Dispatcher(){override fun dispatch(request:RecordedRequest):MockResponse {
                 if(request.getHeader("Authorization")!="Bearer ${"e".repeat(64)}") return MockResponse().setResponseCode(401)
                 if(request.path?.contains("/media")!=true) return MockResponse().setBody("{\"items\":[],\"next_cursor\":null}")
+                if(request.method=="HEAD"){
+                    if(alias&&headRequests.incrementAndGet()==1)return MockResponse().setResponseCode(425)
+                    return MockResponse().setHeader("ETag",etag).setHeader("X-Content-SHA256",hash).setHeader("Content-Length",bytes.size).setHeader("X-Effective-Quality","original")
+                }
                 val attempt=requests.incrementAndGet()
                 if(attempt==1&&retry){interrupted.countDown();return MockResponse().setResponseCode(503)}
                 if(request.path?.contains(nextId.toString())==true)nextRequested.countDown()
@@ -94,7 +99,7 @@ class PlaybackServiceTest {
                     }finally{onMain{bridge.release()}}
                 }
                 val item=playbackItem(media,"Тестовая песня","Dagaz")
-                val next=if(prefetch)playbackItem(media.copy(trackId=nextId,url=media.url.replace(id.toString(),nextId.toString())),"Следующая песня","Dagaz")else item
+                val next=if(alias)queueItem(Track(nextId,1,"low.mp3",durationMs=30000,format=AudioFormat.mp3,originalBytes=bytes.size.toLong(),readyQualities=listOf(Quality.original)),Quality.high,base)else if(prefetch)playbackItem(media.copy(trackId=nextId,url=media.url.replace(id.toString(),nextId.toString())),"Следующая песня","Dagaz")else item
                 val playing=CountDownLatch(1);val ready=CountDownLatch(1);val error=AtomicReference<PlaybackException>()
                 onMain {
                     controller.addListener(object:Player.Listener {
@@ -136,6 +141,7 @@ class PlaybackServiceTest {
                 Handler(Looper.getMainLooper()).post(check)
                 assertTrue("seek timeout; ranges=$ranges",readyAgain.await(15,TimeUnit.SECONDS))
                 assertNull("seek error; ranges=$ranges",error.get())
+                if(alias){val canonical=media.url.replace(id.toString(),nextId.toString());assertTrue(headRequests.get()>=2);assertTrue(StreamCache.get(context).keys.contains(canonical));assertFalse(StreamCache.get(context).keys.contains(canonical.replace("quality=original","quality=high")))}
                 onMain {controller.repeatMode=Player.REPEAT_MODE_ALL;controller.shuffleModeEnabled=true}
                 assertEquals(Player.REPEAT_MODE_ALL,onMain {controller.repeatMode});assertTrue(onMain {controller.shuffleModeEnabled})
                 scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)

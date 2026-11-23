@@ -2728,6 +2728,11 @@
                   "type": "integer"
                 }
               },
+              "Content-Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Content-Range": {
                 "schema": {
                   "type": "string"
@@ -2736,6 +2741,11 @@
               "ETag": {
                 "schema": {
                   "type": "string"
+                }
+              },
+              "X-Effective-Quality": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quality"
                 }
               }
             }
@@ -2762,6 +2772,11 @@
                   "type": "integer"
                 }
               },
+              "Content-Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Content-Range": {
                 "schema": {
                   "type": "string"
@@ -2770,6 +2785,11 @@
               "ETag": {
                 "schema": {
                   "type": "string"
+                }
+              },
+              "X-Effective-Quality": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quality"
                 }
               }
             }
@@ -2812,7 +2832,15 @@
                 }
               }
             },
-            "description": "Representation preparing; job_id in error"
+            "description": "Representation preparing; job_id in error",
+            "headers": {
+              "X-Job-Id": {
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -2891,6 +2919,11 @@
                   "type": "integer"
                 }
               },
+              "Content-Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Content-Range": {
                 "schema": {
                   "type": "string"
@@ -2899,6 +2932,11 @@
               "ETag": {
                 "schema": {
                   "type": "string"
+                }
+              },
+              "X-Effective-Quality": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quality"
                 }
               }
             }
@@ -2917,6 +2955,11 @@
                   "type": "integer"
                 }
               },
+              "Content-Location": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Content-Range": {
                 "schema": {
                   "type": "string"
@@ -2925,6 +2968,11 @@
               "ETag": {
                 "schema": {
                   "type": "string"
+                }
+              },
+              "X-Effective-Quality": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quality"
                 }
               }
             }
@@ -2939,7 +2987,15 @@
             "description": "Invalid range"
           },
           "425": {
-            "description": "Representation preparing; job_id in error"
+            "description": "Representation preparing; job_id in error",
+            "headers": {
+              "X-Job-Id": {
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "description": "Error"

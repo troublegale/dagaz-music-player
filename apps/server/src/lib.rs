@@ -3,9 +3,11 @@ mod auth;
 mod config;
 mod jobs;
 mod library;
+mod manifests;
 mod media;
 mod operations;
 mod playlists;
+mod qualities;
 mod sync;
 mod tags;
 pub use media::descriptor as media_descriptor;
@@ -49,6 +51,7 @@ pub struct AppError {
     status: StatusCode,
     code: &'static str,
     message: &'static str,
+    job_id: Option<uuid::Uuid>,
 }
 impl AppError {
     fn new(status: StatusCode, code: &'static str, message: &'static str) -> Self {
@@ -56,7 +59,12 @@ impl AppError {
             status,
             code,
             message,
+            job_id: None,
         }
+    }
+    fn with_job(mut self, id: uuid::Uuid) -> Self {
+        self.job_id = Some(id);
+        self
     }
     fn internal(message: &'static str) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
@@ -126,7 +134,7 @@ impl IntoResponse for AppError {
                 code: self.code.into(),
                 message: self.message.into(),
                 request_id: uuid::Uuid::new_v4(),
-                job_id: None,
+                job_id: self.job_id,
             }),
         )
             .into_response();
@@ -140,6 +148,11 @@ impl IntoResponse for AppError {
                 header::WWW_AUTHENTICATE,
                 header::HeaderValue::from_static("Bearer"),
             );
+        }
+        if let Some(job) = self.job_id
+            && let Ok(value) = job.to_string().parse()
+        {
+            response.headers_mut().insert("x-job-id", value);
         }
         response
     }
@@ -208,6 +221,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/tracks/metadata-batch",
             post(tags::batch).layer(DefaultBodyLimit::max(128 * 1024)),
         )
+        .route("/download-manifests", post(manifests::create))
+        .route("/download-manifests/{id}", get(manifests::get))
         .route("/tracks", get(library::tracks))
         .route(
             "/tracks/{id}",

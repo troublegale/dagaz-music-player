@@ -60,7 +60,8 @@ class PlaybackService:MediaSessionService() {
         player.addListener(object:Player.Listener {
             override fun onTimelineChanged(timeline:Timeline,reason:Int) {
                 val active=(0 until player.mediaItemCount).mapNotNull{player.getMediaItemAt(it).localConfiguration?.uri?.toString()}.toSet()
-                descriptors.keys.retainAll(active)
+                val canonical=active.mapNotNull{descriptors[it]?.url}.toSet()
+                descriptors.keys.retainAll(active+canonical)
                 pending.keys.retainAll(active)
             }
         })

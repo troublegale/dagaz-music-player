@@ -1,4 +1,4 @@
-param([ValidateSet('Pairing','RealServer','Playback','ScreenLock','Headset')][string]$Phase='Pairing')
+param([ValidateSet('Pairing','RealServer','ServerPlayback','Playback','ScreenLock','Headset')][string]$Phase='Pairing')
 $ErrorActionPreference='Stop'
 $repoRoot=(Resolve-Path -LiteralPath "$PSScriptRoot/../..").Path
 $adb=(Resolve-Path -LiteralPath "$repoRoot/.tools/android/platform-tools/adb.exe").Path
@@ -12,6 +12,7 @@ function Invoke-Tests([string]$Classes,[int]$Count,[hashtable]$Extra=@{}) {
     foreach($entry in $Extra.GetEnumerator()){$instrumentArgs+=@('-e',$entry.Key,$entry.Value)}
     $instrumentArgs+='io.dagaz.player.test/androidx.test.runner.AndroidJUnitRunner'
     $result=Invoke-Adb @instrumentArgs
+    $result | Set-Content -LiteralPath "$fixture/android-$Phase-instrumentation.log"
     $result | Out-Host
     if(($result -join "`n") -match 'INSTRUMENTATION_STATUS_CODE: -(3|4)\b'){throw 'Android tests were skipped; the existing personal connection was preserved'}
     if(($result -join "`n") -notmatch "OK \($Count tests?\)"){throw 'Android instrumentation did not pass'}
@@ -26,7 +27,7 @@ if($Phase -eq 'Pairing') {
     return
 }
 if($Phase -eq 'Playback') {
-    Invoke-Tests 'io.dagaz.player.PlaybackServiceTest' 8
+    Invoke-Tests 'io.dagaz.player.PlaybackServiceTest' 9
     return
 }
 if($Phase -in @('ScreenLock','Headset')) {
@@ -43,7 +44,11 @@ $cargo=if($cargoCommand){$cargoCommand.Source}else{Join-Path $env:USERPROFILE '.
 if(!(Test-Path -LiteralPath $cargo)){throw 'Rust Cargo is required for the real-server fixture'}
 & $cargo test -p dagaz-server --test android_pairing --no-run
 if($LASTEXITCODE -ne 0){throw 'Rust Android fixture build failed'}
-$process=Start-Process -FilePath $cargo -ArgumentList @('test','-p','dagaz-server','--test','android_pairing','--','--ignored','--nocapture') -WorkingDirectory $repoRoot -WindowStyle Hidden -RedirectStandardOutput "$fixture/a1-server-fixture.log" -RedirectStandardError "$fixture/a1-server-fixture-build.log" -PassThru
+$previousMediaFlag=$env:DAGAZ_ANDROID_MEDIA
+try {
+    if($Phase -eq 'ServerPlayback'){$env:DAGAZ_ANDROID_MEDIA='1'}else{Remove-Item Env:DAGAZ_ANDROID_MEDIA -ErrorAction SilentlyContinue}
+    $process=Start-Process -FilePath $cargo -ArgumentList @('test','-p','dagaz-server','--test','android_pairing','--','--ignored','--nocapture') -WorkingDirectory $repoRoot -WindowStyle Hidden -RedirectStandardOutput "$fixture/a1-server-fixture.log" -RedirectStandardError "$fixture/a1-server-fixture-build.log" -PassThru
+}finally{$env:DAGAZ_ANDROID_MEDIA=$previousMediaFlag}
 $timer=[Diagnostics.Stopwatch]::StartNew()
 while(!(Test-Path -LiteralPath $ready)) {
     if($process.HasExited){throw 'Rust Android fixture failed; see ignored fixture logs'}
@@ -57,7 +62,9 @@ $port=$serverUri.Port
 $passed=$false
 Invoke-Adb reverse "tcp:$port" "tcp:$port"
 try {
-    Invoke-Tests 'io.dagaz.player.ServerPairingTest' 1 @{server_url=$settings.url;pairing_code=$settings.code}
+    if($Phase -eq 'ServerPlayback'){
+        Invoke-Tests 'io.dagaz.player.ServerPlaybackTest' 1 @{server_url=$settings.url;pairing_code=$settings.code;track_id=$settings.track_id;alias_track_id=$settings.alias_track_id}
+    }else{Invoke-Tests 'io.dagaz.player.ServerPairingTest' 1 @{server_url=$settings.url;pairing_code=$settings.code}}
     $passed=$true
 } finally {
     Set-Content -LiteralPath $finished -Value $(if($passed){'ok'}else{'failed'})

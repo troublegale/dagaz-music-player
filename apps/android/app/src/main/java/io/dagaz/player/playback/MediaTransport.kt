@@ -49,7 +49,26 @@ internal class MediaTransport(private val context:Context,private val descriptor
         }.build()
     override fun createDataSource():DataSource {
         val upstream=DataSource.Factory { RevisionSource() }
-        return CacheDataSource.Factory().setCache(StreamCache.get(context)).setUpstreamDataSourceFactory(upstream).createDataSource()
+        val cached=CacheDataSource.Factory().setCache(StreamCache.get(context)).setUpstreamDataSourceFactory(upstream)
+        return ResolvingDataSource.Factory(cached,object:ResolvingDataSource.Resolver{
+            override fun resolveDataSpec(spec:DataSpec):DataSpec {
+                val session=try{Credentials(context).load()}catch(_:ClientException){throw MediaValidationException()}?:throw MediaValidationException()
+                val media=descriptors[spec.uri.toString()]?:run {
+                    val item=pending[spec.uri.toString()]?:throw MediaValidationException()
+                    val expected=ServerAddress.parse(session.baseUrl).newBuilder().addPathSegments("api/v1/tracks/${item.id}/media").addQueryParameter("revision",item.revision.toString()).addQueryParameter("quality",item.quality.name).build()
+                    if(expected.toString()!=spec.uri.toString())throw MediaValidationException()
+                    try{runBlocking{DagazApi(session.baseUrl).media(session,item.id,item.revision,item.quality)}}catch(error:ClientException){if(error.failure==Failure.Unavailable||error.failure==Failure.RateLimited||error.failure==Failure.Pending)throw java.io.IOException(error.failure.label);throw MediaValidationException()}
+                }
+                validateOrigin(session,media)
+                descriptors[spec.uri.toString()]=media;descriptors[media.url]=media
+                return spec.buildUpon().setUri(media.url).setKey(media.url).build()
+            }
+        }).createDataSource()
+    }
+    private fun validateOrigin(session:Session,media:MediaDescriptor){
+        val origin=ServerAddress.parse(session.baseUrl)
+        val target=media.url.toHttpUrlOrNull()?:throw MediaValidationException()
+        if(target.scheme!=origin.scheme||target.host!=origin.host||target.port!=origin.port||target.username.isNotEmpty()||target.password.isNotEmpty()||target.fragment!=null||target.encodedPath!="/api/v1/tracks/${media.trackId}/media"||target.queryParameterValues("revision")!=listOf(media.revision.toString())||target.queryParameterValues("quality")!=listOf(media.effectiveQuality.name)||target.queryParameterNames!=setOf("revision","quality"))throw MediaValidationException()
     }
     private inner class RevisionSource:DataSource {
         private var source:HttpDataSource?=null
@@ -57,13 +76,8 @@ internal class MediaTransport(private val context:Context,private val descriptor
         override fun addTransferListener(listener:TransferListener){listeners.add(listener);source?.addTransferListener(listener)}
         override fun open(spec:DataSpec):Long {
             val session=try{Credentials(context).load()}catch(_:ClientException){throw MediaValidationException()}?:throw MediaValidationException()
-            val media=descriptors[spec.uri.toString()]?:run {
-                val item=pending[spec.uri.toString()]?:throw MediaValidationException()
-                try {runBlocking{DagazApi(session.baseUrl).media(session,item.id,item.revision,item.quality)}}catch(error:ClientException){if(error.failure==Failure.Unavailable||error.failure==Failure.RateLimited)throw java.io.IOException(error.failure.label);throw MediaValidationException()}
-            }.also{if(it.url!=spec.uri.toString())throw MediaValidationException();descriptors[it.url]=it}
-            val origin=ServerAddress.parse(session.baseUrl)
-            val target=media.url.toHttpUrlOrNull()?:throw MediaValidationException()
-            if(target.scheme!=origin.scheme||target.host!=origin.host||target.port!=origin.port||target.username.isNotEmpty()||target.password.isNotEmpty()||target.fragment!=null||target.encodedPath!="/api/v1/tracks/${media.trackId}/media"||target.queryParameterValues("revision")!=listOf(media.revision.toString())||target.queryParameterValues("quality")!=listOf(media.effectiveQuality.name))throw MediaValidationException()
+            val media=descriptors[spec.uri.toString()]?:throw MediaValidationException()
+            validateOrigin(session,media)
             val data=OkHttpDataSource.Factory(http).createDataSource();source=data;listeners.forEach(data::addTransferListener)
             return data.open(spec.buildUpon().setHttpRequestHeaders(spec.httpRequestHeaders+mapOf("Authorization" to "Bearer ${session.token}","If-Match" to media.etag,"Accept-Encoding" to "identity")).build())
         }

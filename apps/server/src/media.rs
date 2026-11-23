@@ -66,21 +66,29 @@ async fn resolve(
             .await?;
     let (payload, deleted) = current
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, "not_found", "Track not found"))?;
-    if deleted != 0 {
+    let pinned = crate::manifests::pinned(state, id, revision).await?;
+    if deleted != 0 && !pinned {
         return Err(gone());
     }
-    if quality != Quality::Original {
-        return Err(AppError::new(
-            StatusCode::TOO_EARLY,
-            "representation_not_ready",
-            "Requested quality is not ready",
-        ));
+    let original:Revision=sqlx::query_as("SELECT object_key,byte_length,sha256,etag,storage_etag,superseded_at FROM media_revisions WHERE track_id=? AND revision=? AND quality='original'").bind(id.to_string()).bind(revision).fetch_optional(&state.db).await?.ok_or_else(gone)?;
+    if original
+        .superseded_at
+        .is_some_and(|at| crate::unix_time().is_ok_and(|now| now.saturating_sub(at) >= 86400))
+        && !pinned
+    {
+        return Err(gone());
     }
-    let row:Revision=sqlx::query_as("SELECT object_key,byte_length,sha256,etag,storage_etag,superseded_at FROM media_revisions WHERE track_id=? AND revision=? AND quality='original'").bind(id.to_string()).bind(revision).fetch_optional(&state.db).await?.ok_or_else(gone)?;
+    let effective = crate::qualities::effective(state, id, revision, quality).await?;
+    let row = if effective == Quality::Original {
+        original
+    } else {
+        sqlx::query_as::<_,Revision>("SELECT object_key,byte_length,sha256,etag,storage_etag,superseded_at FROM media_revisions WHERE track_id=? AND revision=? AND quality=?").bind(id.to_string()).bind(revision).bind(crate::qualities::name(effective)).fetch_optional(&state.db).await?.ok_or_else(unavailable)?
+    };
     let now = crate::unix_time()?;
     if row
         .superseded_at
         .is_some_and(|timestamp| now.saturating_sub(timestamp) >= 86400)
+        && !pinned
     {
         return Err(gone());
     }
@@ -91,11 +99,14 @@ async fn resolve(
         track_id: id,
         revision,
         requested_quality: quality,
-        effective_quality: Quality::Original,
+        effective_quality: effective,
         byte_length: row.byte_length,
         sha256: row.sha256.clone(),
         etag: row.etag.clone(),
-        url: format!("/api/v1/tracks/{id}/media?revision={revision}&quality=original"),
+        url: format!(
+            "/api/v1/tracks/{id}/media?revision={revision}&quality={}",
+            crate::qualities::name(effective)
+        ),
     };
     Ok(Media {
         revision: row,
@@ -220,10 +231,14 @@ pub(crate) async fn stream(
     };
     let (start, end) = selection.unwrap_or((0, length - 1));
     let count = end - start + 1;
-    let mime = match media.track.format {
-        AudioFormat::Wav => "audio/wav",
-        AudioFormat::Mp3 => "audio/mpeg",
-        AudioFormat::Flac => "audio/flac",
+    let mime = if media.descriptor.effective_quality != Quality::Original {
+        "audio/mpeg"
+    } else {
+        match media.track.format {
+            AudioFormat::Wav => "audio/wav",
+            AudioFormat::Mp3 => "audio/mpeg",
+            AudioFormat::Flac => "audio/flac",
+        }
     };
     let filename = media
         .track
@@ -231,8 +246,19 @@ pub(crate) async fn stream(
         .rsplit(['/', '\\'])
         .next()
         .unwrap_or("audio");
+    let filename = if media.descriptor.effective_quality != Quality::Original {
+        format!(
+            "{}.mp3",
+            filename
+                .rsplit_once('.')
+                .map(|(stem, _)| stem)
+                .unwrap_or(filename)
+        )
+    } else {
+        filename.to_owned()
+    };
     let filename =
-        percent_encoding::utf8_percent_encode(filename, percent_encoding::NON_ALPHANUMERIC);
+        percent_encoding::utf8_percent_encode(&filename, percent_encoding::NON_ALPHANUMERIC);
     let mut response = Response::builder()
         .status(if selection.is_some() {
             StatusCode::PARTIAL_CONTENT
@@ -244,6 +270,11 @@ pub(crate) async fn stream(
         .header(header::ETAG, &row.etag)
         .header(header::ACCEPT_RANGES, "bytes")
         .header("X-Content-SHA256", &row.sha256)
+        .header(
+            "X-Effective-Quality",
+            crate::qualities::name(media.descriptor.effective_quality),
+        )
+        .header(header::CONTENT_LOCATION, &media.descriptor.url)
         .header(
             header::CONTENT_DISPOSITION,
             format!("inline; filename=\"{id}\"; filename*=UTF-8''{filename}"),

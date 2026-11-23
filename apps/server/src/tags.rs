@@ -207,7 +207,7 @@ fn tag_field<T: ToString>(tag: &mut Tag, key: ItemKey, patch: &Patch<T>) {
         }
     }
 }
-fn file_hash(path: &FilePath) -> Result<String, AppError> {
+pub(crate) fn file_hash(path: &FilePath) -> Result<String, AppError> {
     let mut file = std::fs::File::open(path)?;
     let mut hash = Sha256::new();
     let mut buffer = [0; 65536];
@@ -471,6 +471,7 @@ async fn retag_copy(
         .bind(job)
         .execute(&mut *tx)
         .await?;
+    crate::qualities::enqueue(&mut tx, track.id, track.revision).await?;
     tx.commit().await?;
     Ok(())
 }
