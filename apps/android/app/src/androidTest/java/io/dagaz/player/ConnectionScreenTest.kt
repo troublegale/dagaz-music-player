@@ -63,9 +63,11 @@ class ConnectionScreenTest {
                 waitConnected()
                 revoked.set(true)
                 compose.onNodeWithText("Проверить подключение").performClick()
-                compose.waitUntil(10_000) { compose.onAllNodesWithText("Подключить").fetchSemanticsNodes().isNotEmpty() }
-                compose.onNodeWithText("Адрес сервера").assertTextContains(address)
+                compose.waitUntil(10_000) { compose.onAllNodesWithText("Нужна новая привязка. Получи одноразовый код на сервере.").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithText("К библиотеке").assertIsDisplayed()
                 compose.onNodeWithText("Нужна новая привязка. Получи одноразовый код на сервере.").assertIsDisplayed()
+                compose.onNodeWithText("К библиотеке").performClick()
+                compose.onNodeWithText("Скачанное").assertIsDisplayed()
             } catch (error: Throwable) {
                 throw AssertionError("Mock requests=${server.requestCount}; UI=${compose.onRoot().printToString()}", error)
             } finally {

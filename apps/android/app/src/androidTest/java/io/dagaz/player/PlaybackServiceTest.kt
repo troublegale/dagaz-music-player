@@ -141,7 +141,7 @@ class PlaybackServiceTest {
                 Handler(Looper.getMainLooper()).post(check)
                 assertTrue("seek timeout; ranges=$ranges",readyAgain.await(15,TimeUnit.SECONDS))
                 assertNull("seek error; ranges=$ranges",error.get())
-                if(alias){val canonical=media.url.replace(id.toString(),nextId.toString());assertTrue(headRequests.get()>=2);assertTrue(StreamCache.get(context).keys.contains(canonical));assertFalse(StreamCache.get(context).keys.contains(canonical.replace("quality=original","quality=high")))}
+                if(alias){val canonical=media.url.replace(id.toString(),nextId.toString())+"#sha256=$hash";assertTrue(headRequests.get()>=2);assertTrue(StreamCache.get(context).keys.contains(canonical));assertFalse(StreamCache.get(context).keys.contains(canonical.replace("quality=original","quality=high")))}
                 onMain {controller.repeatMode=Player.REPEAT_MODE_ALL;controller.shuffleModeEnabled=true}
                 assertEquals(Player.REPEAT_MODE_ALL,onMain {controller.repeatMode});assertTrue(onMain {controller.shuffleModeEnabled})
                 scenario.recreate();scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)

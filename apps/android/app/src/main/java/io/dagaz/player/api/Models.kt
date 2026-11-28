@@ -23,6 +23,10 @@ object UuidSerializer : KSerializer<UUID> {
     fun parse(value: String): UUID = UUID.fromString(value).also { require(it.toString().equals(value, ignoreCase = true)) }
 }
 @Serializable enum class Quality { original, high, low }
+@Serializable enum class SelectionKind { track, album, playlist }
+@Serializable data class ManifestCreate(val kind:SelectionKind,val id:UUID,val quality:Quality)
+@Serializable data class ManifestCreated(val id:UUID)
+@Serializable data class ManifestPage(val items:List<MediaDescriptor>,val nextCursor:String?=null,val selectionRevision:Long)
 @Serializable enum class Platform { windows, android }
 @Serializable enum class AudioFormat { wav, mp3, flac }
 @Serializable enum class Repeat { off, one, all }
@@ -61,6 +65,7 @@ object UuidSerializer : KSerializer<UUID> {
 }
 @Serializable data class MediaDescriptor(val trackId: UUID, val revision: Long, val requestedQuality: Quality, val effectiveQuality: Quality, val byteLength: Long, val sha256: String, val etag: String, val url: String) {
     init { require(revision > 0 && byteLength >= 0) }
+    val cacheKey:String get()="$url#sha256=$sha256"
 }
 @Serializable data class UploadState(val id: UUID, val offset: Long, val totalBytes: Long, val expiresAt: String, val status: UploadStatus) {
     init { require(offset >= 0 && totalBytes > 0) }

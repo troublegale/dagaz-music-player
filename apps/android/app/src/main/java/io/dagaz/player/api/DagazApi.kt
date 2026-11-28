@@ -85,6 +85,30 @@ class DagazApi(address: String) {
             MediaDescriptor(id,revision,quality,effective,length,sha.lowercase(),etag,canonical.toString())
         }} catch (_:IOException){throw ClientException(Failure.Unavailable)}
     }
+    suspend fun manifest(session:Session,request:ManifestCreate,operation:String):ManifestCreated {
+        val body=Wire.json.encodeToString(ManifestCreate.serializer(),request).toRequestBody("application/json".toMediaType())
+        return execute(authenticated(session,origin.newBuilder().addPathSegments("api/v1/download-manifests").build()).header("Idempotency-Key",operation).post(body).build(),201,ManifestCreated.serializer())
+    }
+    suspend fun manifestPage(session:Session,id:java.util.UUID,cursor:String?=null):ManifestPage {
+        val page=execute(authenticated(session,listUrl("download-manifests/$id",cursor)).build(),200,ManifestPage.serializer(),4*1024*1024)
+        return page.copy(items=page.items.map{media->
+            val canonical=origin.newBuilder().addPathSegments("api/v1/tracks/${media.trackId}/media").addQueryParameter("revision",media.revision.toString()).addQueryParameter("quality",media.effectiveQuality.name).build()
+            if(media.url!=canonical.toString()&&media.url!=canonical.encodedPath+"?"+canonical.encodedQuery)throw ClientException(Failure.InvalidResponse)
+            media.copy(url=canonical.toString())
+        })
+    }
+    suspend fun snapshot(session:Session,cursor:String?=null):SnapshotPage = execute(authenticated(session,listUrl("snapshot",cursor)).build(),200,SnapshotPage.serializer(),4*1024*1024)
+    suspend fun changes(session:Session,cursor:String):SyncPage = execute(authenticated(session,listUrl("changes",cursor)).build(),200,SyncPage.serializer(),4*1024*1024)
+    suspend fun playlists(session:Session,cursor:String?=null):Page<Playlist> = execute(authenticated(session,listUrl("playlists",cursor)).build(),200,Page.serializer(Playlist.serializer()),4*1024*1024)
+    suspend fun track(session:Session,id:java.util.UUID):Track = execute(authenticated(session,listUrl("tracks/$id",null)).build(),200,Track.serializer())
+    suspend fun playlist(session:Session,id:java.util.UUID,cursor:String?=null):Playlist = execute(authenticated(session,listUrl("playlists/$id",cursor)).build(),200,Playlist.serializer(),4*1024*1024)
+    suspend fun artwork(session:Session,id:java.util.UUID):ByteArray = withContext(Dispatchers.IO) {
+        try{http.newCall(authenticated(session,origin.newBuilder().addPathSegments("api/v1/artworks/$id").addQueryParameter("size","256").build()).build()).execute().use{response->
+            checkStatus(response.code,200);val source=response.body?.source()?:throw ClientException(Failure.InvalidResponse)
+            if(source.request(1024L*1024+1))throw ClientException(Failure.InvalidResponse)
+            source.readByteArray()
+        }}catch(_:IOException){throw ClientException(Failure.Unavailable)}
+    }
     private fun checkStatus(code: Int, expected: Int) {
         when(code) {
             401,403 -> throw ClientException(Failure.PairingRequired)

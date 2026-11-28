@@ -9,6 +9,18 @@ import org.junit.Test
 import java.util.UUID
 
 class LibraryApiTest {
+    @Test fun manifestResolvesRelativeUrlsAndRejectsOtherOrigins()=kotlinx.coroutines.runBlocking {
+        okhttp3.mockwebserver.MockWebServer().use{server->
+            server.start(java.net.InetAddress.getByName("127.0.0.1"),0)
+            val address=server.url("/").newBuilder().host("127.0.0.1").build().toString();val session=Session(address,java.util.UUID.randomUUID(),"a".repeat(64));val api=DagazApi(address)
+            val id=java.util.UUID.randomUUID();val path="/api/v1/tracks/$id/media?revision=1&quality=original"
+            val media=MediaDescriptor(id,1,Quality.high,Quality.original,100,"a".repeat(64),"\"tag\"",path)
+            server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(Wire.json.encodeToString(ManifestPage.serializer(),ManifestPage(listOf(media),selectionRevision=1))))
+            assertEquals(address.trimEnd('/')+path,api.manifestPage(session,java.util.UUID.randomUUID()).items.single().url)
+            server.enqueue(okhttp3.mockwebserver.MockResponse().setBody(Wire.json.encodeToString(ManifestPage.serializer(),ManifestPage(listOf(media.copy(url="https://elsewhere.example$path")),selectionRevision=1))))
+            try{api.manifestPage(session,java.util.UUID.randomUUID());fail("Foreign origin accepted")}catch(error:ClientException){assertEquals(Failure.InvalidResponse,error.failure)}
+        }
+    }
     @Test fun reusedQualityHasCanonicalOriginalUrl() = runBlocking {
         MockWebServer().use {server->
             server.start();val api=DagazApi(server.url("/").toString());val session=Session(api.baseUrl,UUID.randomUUID(),"d".repeat(64));val id=UUID.randomUUID();val hash="a".repeat(64)

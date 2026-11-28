@@ -47,6 +47,22 @@ async fn android_pairing_fixture() {
                 .unwrap()
                 .success()
         );
+        use lofty::{
+            file::{AudioFile, TaggedFileExt},
+            tag::{Accessor, Tag, TagType},
+        };
+        let mut tagged = lofty::read_from_path(&path).unwrap();
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.set_album("Dagaz offline fixture".into());
+        let cover = std::fs::read(workspace.join("fixtures/artwork/cover.png")).unwrap();
+        let mut picture =
+            lofty::picture::Picture::from_reader(&mut std::io::Cursor::new(cover)).unwrap();
+        picture.set_pic_type(lofty::picture::PictureType::CoverFront);
+        tag.push_picture(picture);
+        tagged.insert_tag(tag);
+        tagged
+            .save_to_path(&path, lofty::config::WriteOptions::default())
+            .unwrap();
         let track =
             common::audio::import_bytes(&server, "tone.wav", std::fs::read(path).unwrap()).await;
         let alias = common::audio::import(&server, "profiles/low.mp3").await;
@@ -68,6 +84,21 @@ async fn android_pairing_fixture() {
         }
         settings["track_id"] = serde_json::json!(track.id);
         settings["alias_track_id"] = serde_json::json!(alias.id);
+        settings["album_id"] = serde_json::json!(track.album_id.unwrap());
+        let response = server
+            .http
+            .post(format!("{}/api/v1/playlists", server.url))
+            .bearer_auth(&server.token)
+            .header("Idempotency-Key", uuid::Uuid::new_v4().to_string())
+            .json(&serde_json::json!({"name":"Offline fixture"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 201);
+        let playlist: dagaz_protocol::Playlist = response.json().await.unwrap();
+        let response=server.http.put(format!("{}/api/v1/playlists/{}/tracks",server.url,playlist.id)).bearer_auth(&server.token).header("Idempotency-Key",uuid::Uuid::new_v4().to_string()).json(&serde_json::json!({"expected_revision":1,"track_ids":[track.id,alias.id,track.id]})).send().await.unwrap();
+        assert_eq!(response.status(), 200);
+        settings["playlist_id"] = serde_json::json!(playlist.id);
     }
     std::fs::write(&ready, settings.to_string()).unwrap();
     println!("Android fixture ready; secrets remain in the ignored fixture file");

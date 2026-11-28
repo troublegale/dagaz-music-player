@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.kapt)
 }
 android {
     namespace = "io.dagaz.player"
@@ -34,6 +35,10 @@ dependencies {
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
     implementation("androidx.media3:media3-database:1.8.0")
+    implementation("androidx.room:room-runtime:2.8.5")
+    implementation("androidx.room:room-ktx:2.8.5")
+    kapt("androidx.room:room-compiler:2.8.5")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.mockwebserver)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
@@ -43,3 +48,4 @@ dependencies {
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
+kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }

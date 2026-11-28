@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application android:label="Dagaz" android:icon="@drawable/ic_dagaz" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="false">
@@ -10,5 +12,9 @@
         <service android:name=".playback.PlaybackService" android:foregroundServiceType="mediaPlayback" android:exported="true">
             <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>
+        <service android:name=".downloads.DagazDownloadService" android:foregroundServiceType="dataSync" android:exported="false">
+            <intent-filter><action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+        </service>
+        <service android:name="androidx.media3.exoplayer.scheduler.PlatformScheduler$PlatformSchedulerService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
     </application>
 </manifest>

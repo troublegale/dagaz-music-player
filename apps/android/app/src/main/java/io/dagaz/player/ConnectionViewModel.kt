@@ -59,7 +59,6 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             try { operation() }
             catch (error: ClientException) {
-                if (error.failure == Failure.PairingRequired) session = null
                 mutable.update { it.copy(paired = session != null, message = error.failure.label, error = true) }
             } finally { mutable.update { it.copy(busy = false) } }
         }

@@ -1,0 +1,8 @@
+[
+  {"existing":"low","requested":"high","force":false,"reuse":false},
+  {"existing":"high","requested":"low","force":false,"reuse":true},
+  {"existing":"original","requested":"high","force":false,"reuse":true},
+  {"existing":"high","requested":"original","force":false,"reuse":false},
+  {"existing":"low","requested":"low","force":false,"reuse":true},
+  {"existing":"high","requested":"low","force":true,"reuse":false}
+]

@@ -47,7 +47,7 @@ class ServerPlaybackTest {
             assertTrue(lengths[Quality.low]!!<lengths[Quality.high]!!)
             val reused=api.media(session,UUID.fromString(alias),1,Quality.high)
             assertEquals(Quality.original,reused.effectiveQuality);assertTrue(reused.url.endsWith("quality=original"));play(player,reused)
-            assertTrue(StreamCache.get(context).keys.contains(reused.url));assertFalse(StreamCache.get(context).keys.contains(reused.url.replace("quality=original","quality=high")))
+            val cacheKey="${reused.url}#sha256=${reused.sha256}";assertTrue(StreamCache.get(context).keys.contains(cacheKey));assertFalse(StreamCache.get(context).keys.contains(cacheKey.replace("quality=original","quality=high")))
             assertEquals(1,PlaybackService.activePlayers.get())
         }finally{
             withContext(Dispatchers.Main){controller?.let{it.stop();it.clearMediaItems();it.release()}}

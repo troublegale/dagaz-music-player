@@ -131,3 +131,70 @@ the guard preserves their contents. No personal session is removed to run tests.
 
 These are short functional checks, not a metro/Doze soak or a public VPS test.
 Explicit offline downloads, persistent catalog and device handoff remain later work.
+
+## A3 offline checkpoint — 2026-11-28
+
+The Android client now persists catalog, playlist membership, sync generation/
+cursor, manifest snapshots, pins and local media in Room. Snapshot and membership
+pages stage before publication. DownloadService uses one shared DownloadManager
+and a separate cache with no eviction; each personal server origin has its own
+Room catalog. Rebinding the same origin keeps the local library. Offline reads
+prefer the verified local representation, including in other playlists/albums.
+Changing streaming quality does not replace that representation.
+
+The five device offline tests cover shared pins, removing one selection, an
+interrupted response followed by a nonzero Range, hash verification and failed
+replacement, a reopened database and reads making no HTTP requests, Cyrillic
+search, tombstones, staged snapshot promotion, a pending second manifest page,
+stable manifest creation, duplicate playlist entries and the service's index
+across server origins. Repeated changes to one playlist in a sync page now
+coalesce before fetching membership; an advanced membership revision triggers a
+fresh snapshot instead of trapping the cursor on an old version. Malformed
+payload identities are rejected with the data/cursor transaction rolled back.
+A same-URL/new-hash replacement regression failed before
+SHA-256 was added to explicit-cache keys: failed verification removed ready
+bytes. It now preserves the old copy. Ready publication uses a transaction and
+checks the candidate again so a concurrent tombstone cannot publish it.
+Late span commits from an already open streaming writer are discarded after
+explicit publication; removing the last pin restores normal stream caching.
+Both late duplication and mismatched sync payload identity failed regression
+checks before their fixes. Final offline regression: 5/5 in 2.402 s.
+
+The shared-index regression also failed before moving the cache/manager to one
+runtime. DownloadService retains one manager per service class; creating one per
+server left the foreground service attached to the previous server's index.
+Cleanup now touches only the current origin's requests. Network retry delays
+reuse the streaming schedule (1–30 seconds with jitter); permanent HTTP/version/
+cache-write errors stop. The JVM disk-error check injects CacheException/ENOSPC;
+the phone's actual storage was not filled.
+
+Eleven JVM tests pass, including the common quality-policy fixture, same-origin
+relative manifest URL normalization, foreign-origin rejection, retaining the
+library scope after reauthorization, outage retries and terminal disk errors.
+The Windows contract reader passes the same policy examples; Windows offline
+implementation is still W3 work. Workspace verification passes 52 tests, with
+three standard opt-in/helper exclusions. Clippy passes with warnings denied.
+Debug and unsigned release builds and lint pass.
+
+The pairing/screen regression passes 2/2 and playback passes 9/9 (44.798 s).
+Revoked network access now retains the library/downloads entry point; protected
+server operations still return authentication errors. Existing personal sessions
+and AtomicFile backups remain protected by the instrumentation guard.
+
+`ServerOfflineTest` uses the real Rust/SQLite/RustFS service. It downloads an
+album and a playlist containing repeated/shared tracks through WorkManager and
+Media3, verifies two ready representations and saved cover thumbnails, then ends
+instrumentation. The driver removes only this fixture's USB reverse tunnel and
+starts another instrumentation process. The test asserts a different process ID,
+confirms the server is unreachable, opens the stored catalog/covers, plays the
+local queue using the production MediaSessionService and removes an album without
+losing playlist files. Fixture credentials, marker and server resources are
+cleaned up. Both phases pass (2.144 s download, 2.123 s cold playback), including
+embedded cover import and thumbnail persistence. This is a disconnected-server cold start; it does not toggle the
+phone's airplane mode or claim a real metro test.
+
+Remaining release gates: long mobile-network/Doze runs, OEM background restart
+and dataSync timeout behavior, other devices/API levels, large-library UI memory/
+latency and unreferenced local cover cleanup. Visited pages/download summaries
+are currently materialized in memory; Paging is required before the R3 large-
+library validation. This checkpoint does not complete device handoff or editing.
