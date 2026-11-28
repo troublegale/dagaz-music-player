@@ -21,6 +21,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
 import java.util.UUID
+import java.io.File
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.MockResponse
+import io.dagaz.player.sync.LocalDatabase
 import kotlin.concurrent.thread
 
 private class UploadFixtureProvider(private val assets: android.content.res.AssetManager) : ContentProvider() {
@@ -52,6 +56,52 @@ private class UploadFixtureProvider(private val assets: android.content.res.Asse
 
 @RunWith(AndroidJUnit4::class)
 class SafUploadTest {
+    @Test fun expiredUploadCanRestartAfterRebindingWithoutSelectingFileAgain() = runBlocking {
+        org.junit.Assume.assumeTrue(android.os.Build.VERSION.SDK_INT >= 29)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val resolver = android.content.ContentResolver.wrap(UploadFixtureProvider(InstrumentationRegistry.getInstrumentation().context.assets))
+        MockWebServer().use { server ->
+            server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
+            val url = server.url("/").newBuilder().host("127.0.0.1").build().toString()
+            val first = Session(url, UUID.randomUUID(), "a".repeat(64))
+            val rebound = Session(url, UUID.randomUUID(), "b".repeat(64))
+            val initial = LibraryEditor(context, first, resolver)
+            val item = initial.stage(Uri.parse("content://fixture/tone.flac"))
+            val old = UUID.randomUUID()
+            val new = UUID.randomUUID()
+            fun upload(code: Int, id: UUID, status: UploadStatus, offset: Long = 0) = MockResponse()
+                .setResponseCode(code).setBody(Wire.json.encodeToString(UploadState.serializer(),
+                    UploadState(id, offset, item.length, "2026-11-29T00:00:00Z", status)))
+            try {
+                server.enqueue(upload(201, old, UploadStatus.uploading))
+                try {
+                    initial.upload(item) { throw IOException("Paused before sending bytes") }
+                    fail("Expected injected pause")
+                } catch (error: IOException) { assertEquals("Paused before sending bytes", error.message) }
+                val originalRequest = server.takeRequest(2, java.util.concurrent.TimeUnit.SECONDS)!!
+                val reopened = LibraryEditor(context, rebound, resolver)
+                val orphan = File(context.noBackupFilesDir, "uploads-${LocalDatabase.scope(rebound)}/${UUID.randomUUID()}.audio")
+                orphan.writeBytes(byteArrayOf(1))
+                val saved = reopened.staged().single()
+                assertFalse(orphan.exists())
+                assertEquals(old.toString(), saved.uploadId)
+                server.enqueue(upload(200, old, UploadStatus.expired))
+                server.enqueue(upload(201, new, UploadStatus.uploading))
+                server.enqueue(upload(200, new, UploadStatus.uploading, item.length))
+                server.enqueue(MockResponse().setResponseCode(202).setBody(
+                    Wire.json.encodeToString(Job.serializer(), Job(UUID.randomUUID(), JobKind.`import`, JobStatus.succeeded, errors = emptyList()))))
+                assertEquals(JobStatus.succeeded, reopened.upload(saved) {}.status)
+                val resumed = server.takeRequest(2, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertEquals("GET", resumed.method)
+                assertEquals("/api/v1/uploads/$old", resumed.path)
+                assertEquals("Bearer ${rebound.token}", resumed.getHeader("Authorization"))
+                val restarted = server.takeRequest(2, java.util.concurrent.TimeUnit.SECONDS)!!
+                assertNotEquals(originalRequest.getHeader("Idempotency-Key"), restarted.getHeader("Idempotency-Key"))
+                assertTrue(reopened.staged().isEmpty())
+            } finally { initial.discard(item) }
+        }
+    }
+
     @Test fun multipleUrisResumeWithoutFilesystemPath() = runBlocking {
         val args = InstrumentationRegistry.getArguments()
         val address = args.getString("server_url")
@@ -89,8 +139,11 @@ class SafUploadTest {
                 assertEquals(stage.sha, api.media(session, track, Quality.original).sha256)
             }
             val cover = reopened.artwork(uri("cover.png"))
-            val jobs = reopened.edit(imported, buildJsonObject { put("artist", "Проверка метаданных"); put("artwork_id", cover.toString()) })
+            val patch = buildJsonObject { put("artist", "Проверка метаданных"); put("artwork_id", cover.toString()) }
+            val operation = UUID.randomUUID()
+            val jobs = reopened.edit(imported, patch, operation)
             assertEquals(JobStatus.succeeded, jobs.single().status)
+            assertEquals(jobs.single().id, reopened.edit(imported, patch, operation).single().id)
             val updated = api.track(session, imported.first().id)
             assertEquals("Проверка метаданных", updated.artist)
             assertEquals(cover, updated.artworkId)
@@ -104,17 +157,32 @@ class SafUploadTest {
             assertEquals("revision_conflict", partial.errors.single().code)
             assertNull(api.track(session, fresh.id).artist)
             assertEquals(updated.artist, api.track(session, updated.id).artist)
-            val playlist = reopened.createPlaylist("Метро", UUID.randomUUID())
+            val createKey = UUID.randomUUID()
+            val playlist = reopened.createPlaylist("Метро", createKey)
             val order = listOf(imported[1].id, imported[0].id, imported[1].id)
             val saved = reopened.savePlaylist(playlist, order, UUID.randomUUID())
             assertEquals(order, reopened.playlist(saved.id).trackIds)
-            val renamed = reopened.renamePlaylist(saved, "Утро", UUID.randomUUID())
+            expectConflict { reopened.createPlaylist("Метро", createKey) }
+            val renameKey = UUID.randomUUID()
+            val renamed = reopened.renamePlaylist(saved, "Утро", renameKey)
             assertEquals("Утро", reopened.playlist(renamed.id).name)
-            reopened.deletePlaylist(renamed, UUID.randomUUID())
+            val concurrent = reopened.savePlaylist(renamed, order.reversed().drop(1), UUID.randomUUID())
+            expectConflict { reopened.renamePlaylist(saved, "Утро", renameKey) }
+            assertEquals(concurrent.revision, reopened.playlist(saved.id).revision)
+            reopened.deletePlaylist(concurrent, UUID.randomUUID())
             assertTrue(api.playlists(session).items.isEmpty())
         } finally {
             editor.discard(high)
             editor.discard(flac)
+        }
+    }
+
+    private suspend fun expectConflict(action: suspend () -> Unit) {
+        try {
+            action()
+            fail("Replayed response must not authorize overwriting a newer playlist")
+        } catch (error: ClientException) {
+            assertEquals(Failure.Conflict, error.failure)
         }
     }
 }

@@ -88,40 +88,44 @@ internal fun MetadataEditorScreen(editor: LibraryEditor, tracks: List<Track>, ba
         "title" to single?.title.orEmpty(), "artist" to single?.artist.orEmpty(),
         "album" to single?.album.orEmpty(), "album_artist" to single?.albumArtist.orEmpty()) }
     val fields = remember(tracks) { mutableStateMapOf<String, String?>() }
+    val operation = remember(tracks) { UUID.randomUUID() }
     var cover by remember { mutableStateOf<Uri?>(null) }
+    var uploadedCover by remember { mutableStateOf<UUID?>(null) }
     var clearCover by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var online by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) { cover = uri; clearCover = false }
+        if (uri != null) { cover = uri; uploadedCover = null; clearCover = false }
     }
     LaunchedEffect(editor) { try { editor.online(); online = true } catch (error: ClientException) { message = error.failure.label } }
     BackHandler(onBack = back)
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { TextButton(onClick = back) { Text("К библиотеке") }; Text(single?.title ?: single?.filename ?: "Выбрано треков · ${tracks.size}") }
         for ((key, label) in mapOf("title" to "Название", "artist" to "Исполнитель", "album" to "Альбом", "album_artist" to "Исполнитель альбома")) item(key) {
-            OutlinedTextField(fields[key] ?: original.getValue(key), { fields[key] = it }, label = { Text(label) },
+            OutlinedTextField(fields[key] ?: original.getValue(key), {
+                if (single != null && it == original.getValue(key)) fields.remove(key) else fields[key] = it
+            }, label = { Text(label) },
                 modifier = Modifier.fillMaxWidth(), enabled = !busy && !finished && online, singleLine = true)
             if (single == null) TextButton(enabled = !busy && !finished && online, onClick = { fields[key] = "" }) { Text("Очистить поле «$label»") }
         }
         item {
             Row {
                 TextButton(enabled = !busy && !finished && online, onClick = { picker.launch(arrayOf("image/jpeg","image/png")) }) { Text(if (cover == null) "Выбрать обложку" else "Обложка выбрана") }
-                TextButton(enabled = !busy && !finished && online, onClick = { cover = null; clearCover = !clearCover }) { Text(if (clearCover) "Отменить удаление" else "Убрать обложку") }
+                TextButton(enabled = !busy && !finished && online, onClick = { cover = null; uploadedCover = null; clearCover = !clearCover }) { Text(if (clearCover) "Отменить удаление" else "Убрать обложку") }
             }
             Button(enabled = online && !busy && !finished && (fields.isNotEmpty() || cover != null || clearCover), onClick = {
                 scope.launch {
                     busy = true
                     try {
                         val edits = textPatch(fields)
-                        val artwork = cover?.let { editor.artwork(it) }
+                        val artwork = uploadedCover ?: cover?.let { editor.artwork(it).also { id -> uploadedCover = id } }
                         val patch = buildJsonObject {
                             edits.forEach { (key, value) -> put(key, value) }
                             if (artwork != null) put("artwork_id", artwork.toString()) else if (clearCover) put("artwork_id", JsonNull)
                         }
-                        val results = editor.edit(tracks, patch)
+                        val results = editor.edit(tracks, patch, operation)
                         val failures = results.sumOf { it.errors.size }
                         val conflicts = results.sumOf { job -> job.errors.count { it.code == "revision_conflict" } }
                         finished = true

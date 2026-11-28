@@ -72,7 +72,7 @@ try {
         $linked=$false
         Invoke-Tests 'io.dagaz.player.ServerOfflineTest#coldStartWithoutServer' 1 @{server_url=$settings.url;fixture_nonce=$nonce}
     }elseif($Phase -eq 'LibraryEditor'){
-        Invoke-Tests 'io.dagaz.player.SafUploadTest' 1 @{server_url=$settings.url;pairing_code=$settings.code}
+        Invoke-Tests 'io.dagaz.player.SafUploadTest' 2 @{server_url=$settings.url;pairing_code=$settings.code}
     }elseif($Phase -eq 'ServerPlayback'){
         Invoke-Tests 'io.dagaz.player.ServerPlaybackTest' 1 @{server_url=$settings.url;pairing_code=$settings.code;track_id=$settings.track_id;alias_track_id=$settings.alias_track_id}
     }else{Invoke-Tests 'io.dagaz.player.ServerPairingTest' 1 @{server_url=$settings.url;pairing_code=$settings.code}}

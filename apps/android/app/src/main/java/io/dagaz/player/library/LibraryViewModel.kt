@@ -8,6 +8,7 @@ import io.dagaz.player.api.*
 import io.dagaz.player.auth.Credentials
 import io.dagaz.player.playback.*
 import io.dagaz.player.downloads.*
+import io.dagaz.player.editor.LibraryEditor
 import io.dagaz.player.sync.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -22,7 +23,8 @@ class LibraryViewModel(app:Application):AndroidViewModel(app) {
     private val stored=MutableStateFlow(DownloadsState());val downloads=stored.asStateFlow()
     val player=PlayerConnection(app)
     private var api:DagazApi?=null;private var session:Session?=null;private var repository:DownloadRepository?=null
-    internal fun editor() = session?.let { io.dagaz.player.editor.LibraryEditor(getApplication(), it) }
+    internal var editor: LibraryEditor? = null
+        private set
     private var albumId:UUID?=null;private var artistId:UUID?=null;private var playlistId:UUID?=null
     private var loading:kotlinx.coroutines.Job?=null;private var preparing:kotlinx.coroutines.Job?=null;private var syncing:kotlinx.coroutines.Job?=null
     init {
@@ -30,6 +32,7 @@ class LibraryViewModel(app:Application):AndroidViewModel(app) {
             try {
                 val connection=withContext(Dispatchers.IO){Credentials(getApplication()).load()}?:throw ClientException(Failure.PairingRequired)
                 session=connection;api=DagazApi(connection.baseUrl)
+                editor = LibraryEditor(getApplication(), connection)
                 val repo=withContext(Dispatchers.IO){DownloadRepository.get(getApplication(),connection)};repository=repo
                 repo.reconcile()
                 launch {combine(repo.dao.watchSelections(),repo.dao.watchMedia(),repo.dao.watchSync()){selections,media,sync->

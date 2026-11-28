@@ -37,8 +37,7 @@ fun LibraryScreen(model:LibraryViewModel,settings:()->Unit) {
     val selected = remember { mutableStateMapOf<java.util.UUID, Track>() }
     var editPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var playlistEditor by remember { mutableStateOf(false) }
-    val editor = remember(model, state) { model.editor() }
-    val activeEditor = remember(editor != null, model) { editor }
+    val activeEditor = model.editor
     if (activeEditor != null && (upload || editTracks.isNotEmpty() || playlistEditor)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             val back = { upload = false; editTracks = emptyList(); playlistEditor = false; model.refresh() }
