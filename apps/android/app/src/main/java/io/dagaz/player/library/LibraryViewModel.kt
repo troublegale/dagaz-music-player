@@ -22,6 +22,7 @@ class LibraryViewModel(app:Application):AndroidViewModel(app) {
     private val stored=MutableStateFlow(DownloadsState());val downloads=stored.asStateFlow()
     val player=PlayerConnection(app)
     private var api:DagazApi?=null;private var session:Session?=null;private var repository:DownloadRepository?=null
+    internal fun editor() = session?.let { io.dagaz.player.editor.LibraryEditor(getApplication(), it) }
     private var albumId:UUID?=null;private var artistId:UUID?=null;private var playlistId:UUID?=null
     private var loading:kotlinx.coroutines.Job?=null;private var preparing:kotlinx.coroutines.Job?=null;private var syncing:kotlinx.coroutines.Job?=null
     init {

@@ -4,6 +4,7 @@ import io.dagaz.player.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -14,6 +15,9 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 enum class Failure(val label: String) {
+    TooLarge("Файл превышает допустимый размер."),
+    InvalidFile("Сервер отклонил формат или содержимое файла."),
+    ServerStorage("На сервере недостаточно места."),
     InvalidAddress("Укажи адрес HTTPS без логина, пути и параметров."),
     InvalidInput("Проверь одноразовый код и имя устройства."),
     PairingRequired("Нужна новая привязка. Получи одноразовый код на сервере."),
@@ -109,6 +113,19 @@ class DagazApi(address: String) {
             source.readByteArray()
         }}catch(_:IOException){throw ClientException(Failure.Unavailable)}
     }
+    internal suspend fun <T> write(session: Session, path: String, method: String, key: java.util.UUID,
+        status: Int, serializer: KSerializer<T>, payload: JsonObject? = null,
+        bytes: ByteArray? = null, contentType: String = "application/octet-stream",
+        headers: Map<String, String> = emptyMap()): T {
+        val body = bytes?.toRequestBody(contentType.toMediaType())
+            ?: payload?.toString().orEmpty().toRequestBody("application/json".toMediaType())
+        val request = authenticated(session, listUrl(path, null)).header("Idempotency-Key", key.toString())
+        headers.forEach { (name, value) -> request.header(name, value) }
+        return execute(request.method(method, body).build(), status, serializer, 4 * 1024 * 1024)
+    }
+    internal suspend fun <T> read(session: Session, path: String, serializer: KSerializer<T>): T =
+        execute(authenticated(session, listUrl(path, null)).build(), 200, serializer, 4 * 1024 * 1024)
+
     private fun checkStatus(code: Int, expected: Int) {
         when(code) {
             401,403 -> throw ClientException(Failure.PairingRequired)
@@ -118,12 +135,18 @@ class DagazApi(address: String) {
             429 -> throw ClientException(Failure.RateLimited)
             in 500..599 -> throw ClientException(Failure.Unavailable)
         }
-        if(code!=expected)throw ClientException(Failure.InvalidResponse)
+        if(code!=expected)throw ClientException(when(code) {
+            413 -> Failure.TooLarge
+            415,422 -> Failure.InvalidFile
+            507 -> Failure.ServerStorage
+            else -> Failure.InvalidResponse
+        })
     }
     private suspend fun <T> execute(request: Request, expected: Int, serializer: KSerializer<T>, maxBytes: Int = 65536): T = withContext(Dispatchers.IO) {
         try {
             http.newCall(request).execute().use { response ->
                 checkStatus(response.code,expected)
+                if(expected == 204) return@withContext Wire.json.decodeFromString(serializer, "{}")
                 val source = response.body?.source() ?: throw ClientException(Failure.InvalidResponse)
                 if (source.request(maxBytes.toLong()+1)) throw ClientException(Failure.InvalidResponse)
                 try { Wire.json.decodeFromString(serializer, source.readUtf8()) } catch (_: IllegalArgumentException) { throw ClientException(Failure.InvalidResponse) }
